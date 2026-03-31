@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, desc, sql } from "drizzle-orm";
-import { db, agentsTable, agentActionsTable, memoryEntriesTable } from "@workspace/db";
+import { db, agentsTable, agentActionsTable, memoryEntriesTable } from "../db";
 import crypto from "crypto";
 
 const router: IRouter = Router();
