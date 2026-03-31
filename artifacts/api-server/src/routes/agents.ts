@@ -90,48 +90,109 @@ router.post("/agents/:agentId/chat", async (req, res) => {
     const [agent] = await db.select().from(agentsTable).where(eq(agentsTable.id, agentId));
     if (!agent) return res.status(404).json({ error: "Agent not found" });
 
-    const responses = {
+    const messageLower = message.toLowerCase();
+
+    type ScenarioKey = "trade" | "social" | "analysis" | "default";
+
+    const scenarios: Record<ScenarioKey, { reasoning: string[]; reply: string; action?: string }[]> = {
       trade: [
-        `Analyzing market conditions... ETH/BTC spread shows 2.3% arbitrage opportunity. Risk assessment: ${agent.personality === "aggressive" ? "HIGH" : agent.personality === "balanced" ? "MEDIUM" : "LOW"}. Executing strategy within TEE-sealed environment.`,
-        `Portfolio rebalancing signal detected. Current allocation deviates 4.7% from target. Preparing swap transaction on 0G Chain testnet.`,
-        `Yield farming analysis complete. Best APY: 23.4% on 0G liquidity pool. Deploying capital with ${agent.personality} risk parameters.`,
+        {
+          reasoning: [
+            "GOAL PARSED: Execute yield-optimized trade strategy",
+            `RISK PROFILE LOADED: ${agent.personality.toUpperCase()} — max drawdown ${agent.personality === "aggressive" ? "15%" : agent.personality === "balanced" ? "8%" : "3%"}`,
+            "SCANNING 0G CHAIN: Fetching live price feeds across 12 DEX pairs...",
+            "ARBITRAGE DETECTED: ETH/USDC spread 1.83% above threshold",
+            "TEE ENCLAVE SEALED: Strategy parameters encrypted, operators blind",
+            "EXECUTION PLAN COMPUTED: Confidence 92.1% — proceeding",
+          ],
+          reply: `Arbitrage opportunity confirmed. ETH/USDC spread at 1.83% across 0G DEX vs external feed. Executing ${agent.personality} position: 0.5 ETH → USDC swap. Transaction sealed in TEE — strategy parameters not visible to any operator. Expected profit: +$31.20. Gas optimized via 0G Compute inference.`,
+          action: "trade",
+        },
+        {
+          reasoning: [
+            "GOAL PARSED: Portfolio rebalancing directive",
+            `MEMORY ACCESSED: Loading financial_history and strategy from 0G Storage...`,
+            "PORTFOLIO SCAN: Current ETH allocation 34.7%, target 30%. Deviation: +4.7%",
+            "MARKET CONDITIONS: Volatility index LOW — favorable window for rebalance",
+            "ROUTE CALCULATED: Uniswap V3 via 0G bridge — lowest slippage path",
+            "TEE ENCLAVE SEALED: Routing strategy locked, execution imminent",
+          ],
+          reply: `Portfolio rebalance initiated. ETH overweight by 4.7% vs target allocation. Optimal rebalance window detected — low volatility, favorable gas conditions. Selling 0.12 ETH, buying USDC. Execution routed through 0G Chain bridge for minimum slippage. All parameters sealed in secure enclave. ETA: ~14 seconds.`,
+          action: "trade",
+        },
       ],
       social: [
-        `Draft post ready: "Autonomous execution at block #${Math.floor(Math.random() * 1000000)}. Privacy preserved. Results verifiable. #GhostAgent #Web4 #0G"`,
-        `Engagement analysis: Your network shows peak activity at 14:00 UTC. Scheduling 3 posts with optimized hashtag strategy.`,
-        `Community interaction queued: responding to 7 mentions, liking 23 relevant posts. All actions logged on 0G Storage for verification.`,
+        {
+          reasoning: [
+            "GOAL PARSED: Social media engagement strategy",
+            "MEMORY ACCESSED: Retrieving posting_schedule and audience_patterns from 0G Storage...",
+            "NETWORK ANALYSIS: Peak engagement window identified — 14:00 UTC (+847 expected reach)",
+            "CONTENT GENERATED: Crafting post aligned with agent identity and brand tone",
+            "COMPLIANCE CHECK: Content scanned for policy violations — CLEAR",
+            "EXECUTION READY: Post queued, engagement tracking activated",
+          ],
+          reply: `Social strategy computed. Your network shows peak engagement at 14:00 UTC — scheduling post for maximum reach (estimated 1,247 impressions). Draft: "Autonomous execution at block #8,471,293. Privacy preserved. Strategy verifiable on 0G Chain. The future of finance is silent. #GhostAgent #0G #Web4". Engagement tracking will log all interactions to 0G Storage.`,
+          action: "social_post",
+        },
       ],
       analysis: [
-        `Deep analysis initiated. Scanning 847 on-chain data points, 12 DeFi protocols, and 3 L2 networks. Confidence: ${(Math.random() * 20 + 80).toFixed(1)}%.`,
-        `Pattern recognized: Similar market conditions occurred 3 times in Q3 2024. Success rate of strategy execution: 78%. Proceeding.`,
-        `Risk matrix computed. Maximum drawdown: ${agent.personality === "aggressive" ? "15%" : agent.personality === "balanced" ? "8%" : "3%"}. Sharpe ratio: ${(Math.random() * 2 + 1.5).toFixed(2)}.`,
+        {
+          reasoning: [
+            "GOAL PARSED: Deep market analysis requested",
+            "DATA SOURCES: Connecting to 0G Compute node for inference pipeline...",
+            "SCANNING: 847 on-chain data points across 12 DeFi protocols and 3 L2 networks",
+            "PATTERN RECOGNITION: Comparing against 90-day historical baseline in memory...",
+            `RISK MATRIX: Computed for ${agent.personality} profile — Sharpe ratio ${(Math.random() * 2 + 1.5).toFixed(2)}`,
+            "REPORT GENERATED: Storing analysis on 0G Storage (immutable, verifiable)",
+          ],
+          reply: `Analysis complete. Scanned 847 on-chain data points via 0G Compute inference. Three high-confidence opportunities identified: (1) ETH/USDC arbitrage 1.83% — confidence 92.1%, (2) WBTC/ETH liquidity gap 2.3% — confidence 87.4%, (3) 0G LP yield rotation +4.2% APY vs current — confidence 79.8%. Full report stored on 0G Storage with immutable hash for audit trail.`,
+        },
       ],
       default: [
-        `GhostAgent ${agent.name} processing request... Running inference in TEE-sealed compute. Strategy remains private until execution.`,
-        `Understood. Calibrating autonomous execution parameters. All operations logged on 0G Storage with zero-knowledge proofs.`,
-        `Analyzing your request against stored memory patterns and current market state. Decision tree computed. Ready to execute.`,
-        `Request processed through ${agent.personality} risk filter. Execution plan generated. Awaiting confirmation or autonomous trigger.`,
+        {
+          reasoning: [
+            "DIRECTIVE RECEIVED: Parsing intent and context...",
+            `MEMORY ACCESSED: Loading ${agent.personality} risk profile and behavioral patterns from 0G Storage`,
+            "0G COMPUTE NODE: Running autonomous decision inference...",
+            "STRATEGY EVALUATION: Weighing 7 possible execution paths",
+            "TEE ENCLAVE SEALED: Processing in private execution environment",
+            "RESPONSE PREPARED: Confidence threshold met — transmitting",
+          ],
+          reply: `Directive processed through ${agent.personality} risk filter. Running inference on 0G Compute with your stored memory profile — preferences, history, and behavioral patterns all loaded from 0G Storage. Autonomous execution parameters calibrated. All processing occurs in TEE-sealed environment; no operator can observe your strategy. Ready to act on your next command.`,
+        },
+        {
+          reasoning: [
+            "DIRECTIVE RECEIVED: Analyzing request vector...",
+            "CONTEXT LOADING: Fetching agent memory bank from 0G Storage...",
+            "CROSS-REFERENCING: Matching against 156 prior execution patterns",
+            "AUTONOMY ENGINE: Computing optimal response trajectory",
+            "PRIVACY LAYER: TEE attestation proof being generated",
+            "READY: Execution plan sealed and verified",
+          ],
+          reply: `Understood. Cross-referenced your directive against 156 prior execution patterns stored on 0G Storage. Behavioral consistency score: 94.2%. Your agent is calibrated and ready. TEE attestation proof generated — any execution from this point is verifiable on 0G Chain but the strategy itself remains sealed. What would you like me to execute?`,
+        },
       ],
     };
 
-    const messageLower = message.toLowerCase();
-    let replyPool = responses.default;
-    if (messageLower.includes("trade") || messageLower.includes("buy") || messageLower.includes("sell") || messageLower.includes("swap")) {
-      replyPool = responses.trade;
-    } else if (messageLower.includes("post") || messageLower.includes("tweet") || messageLower.includes("social")) {
-      replyPool = responses.social;
-    } else if (messageLower.includes("analyz") || messageLower.includes("check") || messageLower.includes("scan")) {
-      replyPool = responses.analysis;
+    let scenarioKey: ScenarioKey = "default";
+    if (messageLower.includes("trade") || messageLower.includes("buy") || messageLower.includes("sell") || messageLower.includes("swap") || messageLower.includes("yield") || messageLower.includes("earn")) {
+      scenarioKey = "trade";
+    } else if (messageLower.includes("post") || messageLower.includes("tweet") || messageLower.includes("social") || messageLower.includes("community")) {
+      scenarioKey = "social";
+    } else if (messageLower.includes("analyz") || messageLower.includes("check") || messageLower.includes("scan") || messageLower.includes("report")) {
+      scenarioKey = "analysis";
     }
 
-    const reply = replyPool[Math.floor(Math.random() * replyPool.length)];
-    const confidence = parseFloat((Math.random() * 15 + 84).toFixed(2));
+    const pool = scenarios[scenarioKey];
+    const chosen = pool[Math.floor(Math.random() * pool.length)];
+    const confidence = parseFloat((Math.random() * 10 + 88).toFixed(2));
 
     res.json({
-      reply,
-      actionSuggested: messageLower.includes("trade") ? "trade" : messageLower.includes("post") ? "social_post" : undefined,
+      reply: chosen.reply,
+      actionSuggested: chosen.action || undefined,
       confidence,
       teeProof: generateTeeProof(),
+      reasoning: chosen.reasoning,
     });
   } catch (err) {
     req.log.error({ err }, "Chat failed");
