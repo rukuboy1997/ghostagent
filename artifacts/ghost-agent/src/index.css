@@ -1,0 +1,238 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-card-border: hsl(var(--card-border));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-popover-border: hsl(var(--popover-border));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-primary-border: var(--primary-border);
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-secondary-border: var(--secondary-border);
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-muted-border: var(--muted-border);
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-accent-border: var(--accent-border);
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-destructive-border: var(--destructive-border);
+
+  --color-chart-1: hsl(var(--chart-1));
+  --color-chart-2: hsl(var(--chart-2));
+  --color-chart-3: hsl(var(--chart-3));
+  --color-chart-4: hsl(var(--chart-4));
+  --color-chart-5: hsl(var(--chart-5));
+
+  --color-sidebar: hsl(var(--sidebar));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-primary: hsl(var(--sidebar-primary));
+  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
+  --color-sidebar-primary-border: var(--sidebar-primary-border);
+  --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+  --color-sidebar-accent-border: var(--sidebar-accent-border);
+  --color-sidebar-ring: hsl(var(--sidebar-ring));
+
+  --font-sans: var(--app-font-sans);
+  --font-serif: var(--app-font-serif);
+  --font-mono: var(--app-font-mono);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --background: 228 60% 5%;
+  --foreground: 0 0% 98%;
+  
+  --card: 228 50% 8%;
+  --card-foreground: 0 0% 98%;
+  --card-border: 190 100% 50% / 0.1;
+  
+  --popover: 228 50% 8%;
+  --popover-foreground: 0 0% 98%;
+  --popover-border: 190 100% 50% / 0.1;
+  
+  --primary: 190 100% 50%;
+  --primary-foreground: 228 60% 5%;
+  
+  --secondary: 272 60% 46%;
+  --secondary-foreground: 0 0% 98%;
+  
+  --muted: 228 30% 15%;
+  --muted-foreground: 228 10% 60%;
+  
+  --accent: 190 100% 50% / 0.15;
+  --accent-foreground: 190 100% 50%;
+  
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 98%;
+  
+  --border: 190 100% 50% / 0.2;
+  --input: 190 100% 50% / 0.2;
+  --ring: 190 100% 50%;
+  
+  --sidebar: 228 60% 5%;
+  --sidebar-foreground: 0 0% 98%;
+  --sidebar-border: 190 100% 50% / 0.2;
+  --sidebar-primary: 190 100% 50%;
+  --sidebar-primary-foreground: 228 60% 5%;
+  --sidebar-accent: 190 100% 50% / 0.15;
+  --sidebar-accent-foreground: 190 100% 50%;
+  --sidebar-ring: 190 100% 50%;
+  
+  --chart-1: 190 100% 50%;
+  --chart-2: 272 60% 46%;
+  --chart-3: 142 71% 45%;
+  --chart-4: 43 74% 66%;
+  --chart-5: 0 84% 60%;
+  
+  --radius: 0rem;
+  
+  --app-font-sans: 'Inter', sans-serif;
+  --app-font-serif: Georgia, serif;
+  --app-font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+.dark {
+  --background: 228 60% 5%;
+  --foreground: 0 0% 98%;
+  
+  --card: 228 50% 8%;
+  --card-foreground: 0 0% 98%;
+  --card-border: 190 100% 50% / 0.1;
+  
+  --popover: 228 50% 8%;
+  --popover-foreground: 0 0% 98%;
+  --popover-border: 190 100% 50% / 0.1;
+  
+  --primary: 190 100% 50%;
+  --primary-foreground: 228 60% 5%;
+  
+  --secondary: 272 60% 46%;
+  --secondary-foreground: 0 0% 98%;
+  
+  --muted: 228 30% 15%;
+  --muted-foreground: 228 10% 60%;
+  
+  --accent: 190 100% 50% / 0.15;
+  --accent-foreground: 190 100% 50%;
+  
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 98%;
+  
+  --border: 190 100% 50% / 0.2;
+  --input: 190 100% 50% / 0.2;
+  --ring: 190 100% 50%;
+  
+  --sidebar: 228 60% 5%;
+  --sidebar-foreground: 0 0% 98%;
+  --sidebar-border: 190 100% 50% / 0.2;
+  --sidebar-primary: 190 100% 50%;
+  --sidebar-primary-foreground: 228 60% 5%;
+  --sidebar-accent: 190 100% 50% / 0.15;
+  --sidebar-accent-foreground: 190 100% 50%;
+  --sidebar-ring: 190 100% 50%;
+  
+  --chart-1: 190 100% 50%;
+  --chart-2: 272 60% 46%;
+  --chart-3: 142 71% 45%;
+  --chart-4: 43 74% 66%;
+  --chart-5: 0 84% 60%;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+.glitch-effect {
+  position: relative;
+}
+
+.glitch-effect::before,
+.glitch-effect::after {
+  content: attr(data-text);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--background);
+}
+
+.glitch-effect::before {
+  left: 2px;
+  text-shadow: -1px 0 red;
+  animation: glitch-anim-1 2s infinite linear alternate-reverse;
+}
+
+.glitch-effect::after {
+  left: -2px;
+  text-shadow: -1px 0 blue;
+  animation: glitch-anim-2 3s infinite linear alternate-reverse;
+}
+
+@keyframes glitch-anim-1 {
+  0% { clip-path: inset(20% 0 80% 0); }
+  20% { clip-path: inset(60% 0 10% 0); }
+  40% { clip-path: inset(40% 0 50% 0); }
+  60% { clip-path: inset(80% 0 5% 0); }
+  80% { clip-path: inset(10% 0 70% 0); }
+  100% { clip-path: inset(30% 0 40% 0); }
+}
+
+@keyframes glitch-anim-2 {
+  0% { clip-path: inset(10% 0 60% 0); }
+  20% { clip-path: inset(30% 0 20% 0); }
+  40% { clip-path: inset(70% 0 10% 0); }
+  60% { clip-path: inset(20% 0 50% 0); }
+  80% { clip-path: inset(50% 0 30% 0); }
+  100% { clip-path: inset(5% 0 80% 0); }
+}
+
+.scanlines {
+  background: linear-gradient(
+    to bottom,
+    rgba(255,255,255,0),
+    rgba(255,255,255,0) 50%,
+    rgba(0,0,0,0.2) 50%,
+    rgba(0,0,0,0.2)
+  );
+  background-size: 100% 4px;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+  z-index: 50;
+  opacity: 0.3;
+}

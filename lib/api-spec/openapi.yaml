@@ -1,15 +1,24 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: GhostAgent API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: agents
+    description: Agent management
+  - name: actions
+    description: Agent autonomous actions
+  - name: memory
+    description: Agent memory and preferences
+  - name: marketplace
+    description: Agent marketplace
+  - name: stats
+    description: Platform statistics
 paths:
   /healthz:
     get:
@@ -24,6 +33,269 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /agents:
+    get:
+      operationId: getAgents
+      tags: [agents]
+      summary: List all agents
+      responses:
+        "200":
+          description: List of agents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Agent"
+    post:
+      operationId: createAgent
+      tags: [agents]
+      summary: Create a new GhostAgent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAgentInput"
+      responses:
+        "201":
+          description: Agent created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+
+  /agents/{agentId}:
+    get:
+      operationId: getAgent
+      tags: [agents]
+      summary: Get agent by ID
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Agent details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+    patch:
+      operationId: updateAgent
+      tags: [agents]
+      summary: Update agent
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAgentInput"
+      responses:
+        "200":
+          description: Agent updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+    delete:
+      operationId: deleteAgent
+      tags: [agents]
+      summary: Delete agent
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Agent deleted
+
+  /agents/{agentId}/chat:
+    post:
+      operationId: chatWithAgent
+      tags: [agents]
+      summary: Chat with your GhostAgent
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatInput"
+      responses:
+        "200":
+          description: Agent response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatResponse"
+
+  /agents/{agentId}/actions:
+    get:
+      operationId: getAgentActions
+      tags: [actions]
+      summary: Get all actions for an agent
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of actions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentAction"
+    post:
+      operationId: executeAction
+      tags: [actions]
+      summary: Execute an autonomous action
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExecuteActionInput"
+      responses:
+        "201":
+          description: Action executed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentAction"
+
+  /agents/{agentId}/memory:
+    get:
+      operationId: getAgentMemory
+      tags: [memory]
+      summary: Get agent memory entries
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Memory entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MemoryEntry"
+    post:
+      operationId: addMemoryEntry
+      tags: [memory]
+      summary: Add a memory entry
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMemoryInput"
+      responses:
+        "201":
+          description: Memory entry added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryEntry"
+
+  /agents/{agentId}/reputation:
+    get:
+      operationId: getAgentReputation
+      tags: [agents]
+      summary: Get agent reputation score and breakdown
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Reputation data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReputationScore"
+
+  /marketplace:
+    get:
+      operationId: getMarketplace
+      tags: [marketplace]
+      summary: Get marketplace agent listings
+      responses:
+        "200":
+          description: Marketplace listings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MarketplaceListing"
+
+  /stats/platform:
+    get:
+      operationId: getPlatformStats
+      tags: [stats]
+      summary: Get platform-wide statistics
+      responses:
+        "200":
+          description: Platform stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformStats"
+
+  /stats/activity:
+    get:
+      operationId: getRecentActivity
+      tags: [stats]
+      summary: Get recent activity feed across all agents
+      responses:
+        "200":
+          description: Recent activity
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityFeedItem"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +306,364 @@ components:
       required:
         - status
 
+    Agent:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        personality:
+          type: string
+          enum: [aggressive, balanced, conservative]
+        status:
+          type: string
+          enum: [active, idle, executing, paused]
+        agentId:
+          type: string
+          description: On-chain identity hash
+        reputationScore:
+          type: number
+        totalActions:
+          type: integer
+        successRate:
+          type: number
+        capabilities:
+          type: array
+          items:
+            type: string
+          description: trading, social, payments, negotiations
+        isPrivate:
+          type: boolean
+        teeVerified:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - personality
+        - status
+        - agentId
+        - reputationScore
+        - totalActions
+        - successRate
+        - capabilities
+        - isPrivate
+        - teeVerified
+        - createdAt
+        - updatedAt
+
+    CreateAgentInput:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        personality:
+          type: string
+          enum: [aggressive, balanced, conservative]
+        capabilities:
+          type: array
+          items:
+            type: string
+        isPrivate:
+          type: boolean
+      required:
+        - name
+        - personality
+        - capabilities
+
+    UpdateAgentInput:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        personality:
+          type: string
+          enum: [aggressive, balanced, conservative]
+        status:
+          type: string
+          enum: [active, idle, executing, paused]
+        capabilities:
+          type: array
+          items:
+            type: string
+        isPrivate:
+          type: boolean
+
+    ChatInput:
+      type: object
+      properties:
+        message:
+          type: string
+        context:
+          type: string
+      required:
+        - message
+
+    ChatResponse:
+      type: object
+      properties:
+        reply:
+          type: string
+        actionSuggested:
+          type: string
+        confidence:
+          type: number
+        teeProof:
+          type: string
+      required:
+        - reply
+        - confidence
+        - teeProof
+
+    AgentAction:
+      type: object
+      properties:
+        id:
+          type: integer
+        agentId:
+          type: integer
+        type:
+          type: string
+          enum: [trade, social_post, payment, negotiation, analysis]
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [pending, executing, completed, failed]
+        result:
+          type: string
+        txHash:
+          type: string
+        gasUsed:
+          type: string
+        teeProof:
+          type: string
+        isPrivate:
+          type: boolean
+        value:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - agentId
+        - type
+        - title
+        - status
+        - isPrivate
+        - createdAt
+
+    ExecuteActionInput:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [trade, social_post, payment, negotiation, analysis]
+        title:
+          type: string
+        description:
+          type: string
+        isPrivate:
+          type: boolean
+        params:
+          type: object
+          additionalProperties: true
+      required:
+        - type
+        - title
+
+    MemoryEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        agentId:
+          type: integer
+        category:
+          type: string
+          enum: [preference, financial_history, behavior_pattern, strategy, social]
+        key:
+          type: string
+        value:
+          type: string
+        confidence:
+          type: number
+        isEncrypted:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - agentId
+        - category
+        - key
+        - value
+        - confidence
+        - isEncrypted
+        - createdAt
+
+    CreateMemoryInput:
+      type: object
+      properties:
+        category:
+          type: string
+          enum: [preference, financial_history, behavior_pattern, strategy, social]
+        key:
+          type: string
+        value:
+          type: string
+        isEncrypted:
+          type: boolean
+      required:
+        - category
+        - key
+        - value
+
+    ReputationScore:
+      type: object
+      properties:
+        agentId:
+          type: integer
+        totalScore:
+          type: number
+        performanceScore:
+          type: number
+        reliabilityScore:
+          type: number
+        privacyScore:
+          type: number
+        actionsCompleted:
+          type: integer
+        successRate:
+          type: number
+        rank:
+          type: string
+          enum: [ghost, shadow, specter, phantom, wraith]
+        onChainVerified:
+          type: boolean
+      required:
+        - agentId
+        - totalScore
+        - performanceScore
+        - reliabilityScore
+        - privacyScore
+        - actionsCompleted
+        - successRate
+        - rank
+        - onChainVerified
+
+    MarketplaceListing:
+      type: object
+      properties:
+        id:
+          type: integer
+        agentId:
+          type: integer
+        agentName:
+          type: string
+        description:
+          type: string
+        strategy:
+          type: string
+        price:
+          type: string
+        reputationScore:
+          type: number
+        successRate:
+          type: number
+        category:
+          type: string
+          enum: [trading, social, payments, all_in_one]
+        isVerified:
+          type: boolean
+        rentals:
+          type: integer
+      required:
+        - id
+        - agentId
+        - agentName
+        - strategy
+        - price
+        - reputationScore
+        - successRate
+        - category
+        - isVerified
+        - rentals
+
+    PlatformStats:
+      type: object
+      properties:
+        totalAgents:
+          type: integer
+        activeAgents:
+          type: integer
+        totalActions:
+          type: integer
+        totalValueManaged:
+          type: string
+        teeExecutions:
+          type: integer
+        successRate:
+          type: number
+        storageUsed:
+          type: string
+        onChainTxns:
+          type: integer
+      required:
+        - totalAgents
+        - activeAgents
+        - totalActions
+        - totalValueManaged
+        - teeExecutions
+        - successRate
+        - storageUsed
+        - onChainTxns
+
+    ActivityFeedItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        agentName:
+          type: string
+        action:
+          type: string
+        type:
+          type: string
+          enum: [trade, social_post, payment, negotiation, analysis, created]
+        value:
+          type: string
+        isPrivate:
+          type: boolean
+        teeVerified:
+          type: boolean
+        timestamp:
+          type: string
+          format: date-time
+      required:
+        - id
+        - agentName
+        - action
+        - type
+        - isPrivate
+        - teeVerified
+        - timestamp

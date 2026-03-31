@@ -1,8 +1,8 @@
-# Workspace
+# GhostAgent
 
 ## Overview
 
-pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.
+GhostAgent is a privacy-first autonomous AI agent platform. Users create AI twins ("agents") that execute financial, social, and on-chain actions on their behalf using verifiable secure execution (TEE simulation). Built for the 0G AI × Web3 Hackathon.
 
 ## Stack
 
@@ -10,87 +10,71 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **Node.js version**: 24
 - **Package manager**: pnpm
 - **TypeScript version**: 5.9
-- **API framework**: Express 5
+- **Frontend**: React + Vite (artifacts/ghost-agent) — dark hacker aesthetic
+- **API framework**: Express 5 (artifacts/api-server)
 - **Database**: PostgreSQL + Drizzle ORM
 - **Validation**: Zod (`zod/v4`), `drizzle-zod`
 - **API codegen**: Orval (from OpenAPI spec)
-- **Build**: esbuild (CJS bundle)
+- **Build**: esbuild (server), Vite (frontend)
+- **Routing**: Wouter (frontend)
+- **Animations**: Framer Motion
+- **Icons**: Lucide React
 
 ## Structure
 
 ```text
 artifacts-monorepo/
-├── artifacts/              # Deployable applications
-│   └── api-server/         # Express API server
-├── lib/                    # Shared libraries
+├── artifacts/
+│   ├── api-server/         # Express API server
+│   └── ghost-agent/        # React + Vite frontend
+├── lib/
 │   ├── api-spec/           # OpenAPI spec + Orval codegen config
 │   ├── api-client-react/   # Generated React Query hooks
 │   ├── api-zod/            # Generated Zod schemas from OpenAPI
 │   └── db/                 # Drizzle ORM schema + DB connection
-├── scripts/                # Utility scripts (single workspace package)
-│   └── src/                # Individual .ts scripts, run via `pnpm --filter @workspace/scripts run <script>`
-├── pnpm-workspace.yaml     # pnpm workspace (artifacts/*, lib/*, lib/integrations/*, scripts)
-├── tsconfig.base.json      # Shared TS options (composite, bundler resolution, es2022)
-├── tsconfig.json           # Root TS project references
-└── package.json            # Root package with hoisted devDeps
+├── scripts/
+│   └── src/
+│       └── seed-ghost.ts   # Seed script for GhostAgent data
 ```
 
-## TypeScript & Composite Projects
+## Key Features
 
-Every package extends `tsconfig.base.json` which sets `composite: true`. The root `tsconfig.json` lists all packages as project references. This means:
+1. **Agent Creation** — Create unique AI agents with name, personality (aggressive/balanced/conservative), capabilities, and privacy settings
+2. **AI Chat Interface** — Real-time chat with your agent, returns AI responses with confidence scores and TEE proofs
+3. **Autonomous Actions** — Execute trades, social posts, payments, negotiations, and analysis actions
+4. **Long-Term Memory** — 0G Storage-style memory with encrypted entries for sensitive data
+5. **Reputation System** — On-chain reputation score with ranks (ghost → shadow → specter → phantom → wraith)
+6. **Agent Marketplace** — Browse and rent agent strategies from other users
+7. **Platform Dashboard** — Real-time stats, live activity feed, agent overview
 
-- **Always typecheck from the root** — run `pnpm run typecheck` (which runs `tsc --build --emitDeclarationOnly`). This builds the full dependency graph so that cross-package imports resolve correctly. Running `tsc` inside a single package will fail if its dependencies haven't been built yet.
-- **`emitDeclarationOnly`** — we only emit `.d.ts` files during typecheck; actual JS bundling is handled by esbuild/tsx/vite...etc, not `tsc`.
-- **Project references** — when package A depends on package B, A's `tsconfig.json` must list B in its `references` array. `tsc --build` uses this to determine build order and skip up-to-date packages.
+## Database Schema
 
-## Root Scripts
+- `agents` — Agent identity, personality, reputation, capabilities
+- `agent_actions` — Action execution history with TEE proofs, tx hashes
+- `memory_entries` — Agent long-term memory (preferences, history, strategies)
+- `marketplace_listings` — Marketplace agent strategy listings
 
-- `pnpm run build` — runs `typecheck` first, then recursively runs `build` in all packages that define it
-- `pnpm run typecheck` — runs `tsc --build --emitDeclarationOnly` using project references
+## API Routes
 
-## Packages
+- `GET/POST /api/agents` — List / Create agents
+- `GET/PATCH/DELETE /api/agents/:id` — Agent CRUD
+- `POST /api/agents/:id/chat` — Chat with agent
+- `GET/POST /api/agents/:id/actions` — Actions list / execute
+- `GET/POST /api/agents/:id/memory` — Memory entries
+- `GET /api/agents/:id/reputation` — Reputation score
+- `GET /api/marketplace` — Marketplace listings
+- `GET /api/stats/platform` — Platform-wide statistics
+- `GET /api/stats/activity` — Recent activity feed
 
-### `artifacts/api-server` (`@workspace/api-server`)
+## Seed Data
 
-Express 5 API server. Routes live in `src/routes/` and use `@workspace/api-zod` for request and response validation and `@workspace/db` for persistence.
+Run: `pnpm --filter @workspace/scripts run seed-ghost`
 
-- Entry: `src/index.ts` — reads `PORT`, starts Express
-- App setup: `src/app.ts` — mounts CORS, JSON/urlencoded parsing, routes at `/api`
-- Routes: `src/routes/index.ts` mounts sub-routers; `src/routes/health.ts` exposes `GET /health` (full path: `/api/health`)
-- Depends on: `@workspace/db`, `@workspace/api-zod`
-- `pnpm --filter @workspace/api-server run dev` — run the dev server
-- `pnpm --filter @workspace/api-server run build` — production esbuild bundle (`dist/index.cjs`)
-- Build bundles an allowlist of deps (express, cors, pg, drizzle-orm, zod, etc.) and externalizes the rest
+Creates 3 pre-built agents (Alpha Ghost, Phantom Protocol, Shadow Yield) with realistic action history, memory entries, and marketplace listings.
 
-### `lib/db` (`@workspace/db`)
+## Development
 
-Database layer using Drizzle ORM with PostgreSQL. Exports a Drizzle client instance and schema models.
-
-- `src/index.ts` — creates a `Pool` + Drizzle instance, exports schema
-- `src/schema/index.ts` — barrel re-export of all models
-- `src/schema/<modelname>.ts` — table definitions with `drizzle-zod` insert schemas (no models definitions exist right now)
-- `drizzle.config.ts` — Drizzle Kit config (requires `DATABASE_URL`, automatically provided by Replit)
-- Exports: `.` (pool, db, schema), `./schema` (schema only)
-
-Production migrations are handled by Replit when publishing. In development, we just use `pnpm --filter @workspace/db run push`, and we fallback to `pnpm --filter @workspace/db run push-force`.
-
-### `lib/api-spec` (`@workspace/api-spec`)
-
-Owns the OpenAPI 3.1 spec (`openapi.yaml`) and the Orval config (`orval.config.ts`). Running codegen produces output into two sibling packages:
-
-1. `lib/api-client-react/src/generated/` — React Query hooks + fetch client
-2. `lib/api-zod/src/generated/` — Zod schemas
-
-Run codegen: `pnpm --filter @workspace/api-spec run codegen`
-
-### `lib/api-zod` (`@workspace/api-zod`)
-
-Generated Zod schemas from the OpenAPI spec (e.g. `HealthCheckResponse`). Used by `api-server` for response validation.
-
-### `lib/api-client-react` (`@workspace/api-client-react`)
-
-Generated React Query hooks and fetch client from the OpenAPI spec (e.g. `useHealthCheck`, `healthCheck`).
-
-### `scripts` (`@workspace/scripts`)
-
-Utility scripts package. Each script is a `.ts` file in `src/` with a corresponding npm script in `package.json`. Run scripts via `pnpm --filter @workspace/scripts run <script>`. Scripts can import any workspace package (e.g., `@workspace/db`) by adding it as a dependency in `scripts/package.json`.
+- `pnpm --filter @workspace/api-server run dev` — Run API server
+- `pnpm --filter @workspace/ghost-agent run dev` — Run frontend
+- `pnpm --filter @workspace/api-spec run codegen` — Regenerate API client
+- `pnpm --filter @workspace/db run push` — Push DB schema changes
