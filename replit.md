@@ -6,11 +6,11 @@ GhostAgent is a privacy-first autonomous AI agent platform. Users create AI twin
 
 ## Stack
 
-- **Monorepo tool**: pnpm workspaces
+- **Monorepo tool**: npm workspaces
 - **Node.js version**: 24
-- **Package manager**: pnpm
-- **TypeScript version**: 5.9
-- **Frontend**: React + Vite (artifacts/ghost-agent) — dark hacker aesthetic
+- **Package manager**: npm
+- **Language**: JavaScript (JSX for React components)
+- **Frontend**: React + Vite (artifacts/ghost-agent) — dark hacker aesthetic, mobile-responsive
 - **API framework**: Express 5 (artifacts/api-server)
 - **Database**: PostgreSQL + Drizzle ORM
 - **Validation**: Zod (`zod/v4`), `drizzle-zod`
@@ -34,7 +34,7 @@ artifacts-monorepo/
 │   └── db/                 # Drizzle ORM schema + DB connection
 ├── scripts/
 │   └── src/
-│       └── seed-ghost.ts   # Seed script for GhostAgent data
+│       └── seed-ghost.js   # Seed script for GhostAgent data
 ```
 
 ## Key Features
@@ -46,6 +46,7 @@ artifacts-monorepo/
 5. **Reputation System** — On-chain reputation score with ranks (ghost → shadow → specter → phantom → wraith)
 6. **Agent Marketplace** — Browse and rent agent strategies from other users
 7. **Platform Dashboard** — Real-time stats, live activity feed, agent overview
+8. **Mobile-Responsive Layout** — Hamburger menu on mobile, full horizontal nav on desktop
 
 ## Database Schema
 
@@ -53,6 +54,8 @@ artifacts-monorepo/
 - `agent_actions` — Action execution history with TEE proofs, tx hashes
 - `memory_entries` — Agent long-term memory (preferences, history, strategies)
 - `marketplace_listings` — Marketplace agent strategy listings
+
+Tables are created via SQL (drizzle-kit push is not used due to npm workspace resolution constraints).
 
 ## API Routes
 
@@ -66,15 +69,8 @@ artifacts-monorepo/
 - `GET /api/stats/platform` — Platform-wide statistics
 - `GET /api/stats/activity` — Recent activity feed
 
-## Seed Data
-
-Run: `pnpm --filter @workspace/scripts run seed-ghost`
-
-Creates 3 pre-built agents (Alpha Ghost, Phantom Protocol, Shadow Yield) with realistic action history, memory entries, and marketplace listings.
-
 ## Development
 
-- `pnpm --filter @workspace/api-server run dev` — Run API server
-- `pnpm --filter @workspace/ghost-agent run dev` — Run frontend
-- `pnpm --filter @workspace/api-spec run codegen` — Regenerate API client
-- `pnpm --filter @workspace/db run push` — Push DB schema changes
+- `npm run --workspace=artifacts/api-server dev` — Run API server
+- `npm run --workspace=artifacts/ghost-agent dev` — Run frontend
+- `npm run --workspace=lib/db push` — Push DB schema changes (drizzle.config.js)

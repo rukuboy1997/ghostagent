@@ -16,8 +16,8 @@ async function buildAll() {
 
   await esbuild({
     entryPoints: [
-      path.resolve(artifactDir, "src/index.ts"),
-      path.resolve(artifactDir, "src/handler.ts"),
+      path.resolve(artifactDir, "src/index.js"),
+      path.resolve(artifactDir, "src/handler.js"),
     ],
     platform: "node",
     bundle: true,
@@ -36,6 +36,7 @@ async function buildAll() {
       "zod",
       "drizzle-zod",
       "drizzle-orm",
+      "thread-stream",
       "*.node",
       "sharp",
       "better-sqlite3",
