@@ -6,10 +6,13 @@ import {
   useGetAgents,
   getGetAgentsQueryKey
 } from "@workspace/api-client-react";
-import { Activity, Shield, Zap, Hash, Database, Clock, Terminal, Server, Cpu, Lock, CheckCircle, TrendingUp } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Activity, Shield, Zap, Hash, Database, Clock, Terminal, Server, Cpu, Lock, CheckCircle, TrendingUp, ExternalLink, Radio } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
+import { getApiUrl } from "@/lib/api";
+
 function Dashboard() {
   const { data: stats, isLoading: statsLoading } = useGetPlatformStats({
     query: { queryKey: getGetPlatformStatsQueryKey() }
@@ -20,10 +23,18 @@ function Dashboard() {
   const { data: agents, isLoading: agentsLoading } = useGetAgents({
     query: { queryKey: getGetAgentsQueryKey() }
   });
+  const { data: networkStatus } = useQuery({
+    queryKey: ["network-status"],
+    queryFn: async () => {
+      const r = await fetch(getApiUrl("/api/network/status"));
+      if (!r.ok) throw new Error("network status failed");
+      return r.json();
+    },
+    refetchInterval: 15000,
+    staleTime: 10000
+  });
+
   return <div className="space-y-6 animate-in fade-in duration-500">
-      {
-    /* Header */
-  }
       <div className="flex items-center justify-between border-b border-border/50 pb-4">
         <div>
           <h2 className="text-2xl font-bold uppercase tracking-widest text-primary flex items-center gap-2">
@@ -35,14 +46,11 @@ function Dashboard() {
           <div className="text-xs text-muted-foreground uppercase tracking-wider">System Status</div>
           <div className="text-green-400 text-sm font-bold flex items-center gap-2 justify-end">
             <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-            NOMINAL
+            {networkStatus?.connected ? "NOMINAL" : "DEGRADED"}
           </div>
         </div>
       </div>
 
-      {
-    /* Stats Grid */
-  }
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard title="Active Operatives" value={stats?.activeAgents ?? "--"} subValue={`/ ${stats?.totalAgents ?? "--"} Total`} icon={<Zap size={18} className="text-primary" />} loading={statsLoading} />
         <div className="relative group">
@@ -53,15 +61,9 @@ function Dashboard() {
         <StatCard title="On-Chain Txns" value={stats?.onChainTxns ?? "--"} icon={<Hash size={18} className="text-primary" />} loading={statsLoading} />
       </div>
 
-      {
-    /* 0G Network Status */
-  }
-      <ZeroGNetworkPanel stats={stats} loading={statsLoading} />
+      <ZeroGNetworkPanel stats={stats} statsLoading={statsLoading} networkStatus={networkStatus} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {
-    /* Live Feed */
-  }
         <Card className="lg:col-span-2 border-border/50 bg-card/50 backdrop-blur">
           <CardHeader className="border-b border-border/50 pb-4">
             <CardTitle className="uppercase tracking-widest text-sm flex items-center gap-2 text-primary">
@@ -105,9 +107,6 @@ function Dashboard() {
           </CardContent>
         </Card>
 
-        {
-    /* My Operatives */
-  }
         <Card className="border-border/50 bg-card/50 backdrop-blur">
           <CardHeader className="border-b border-border/50 pb-4">
             <div className="flex justify-between items-center">
@@ -137,6 +136,7 @@ function Dashboard() {
                       <div className="text-[10px] text-muted-foreground bg-muted/30 px-1 py-0.5">REP: {agent.reputationScore}</div>
                       <div className="text-[10px] text-muted-foreground bg-muted/30 px-1 py-0.5 uppercase">{agent.personality}</div>
                       {agent.teeVerified && <div className="text-[10px] text-green-400/70 flex items-center gap-0.5"><Shield size={9} /> TEE</div>}
+                      {agent.chainRegistered && <div className="text-[10px] text-primary/70 flex items-center gap-0.5"><Hash size={9} /> ON-CHAIN</div>}
                     </div>
                   </div>
                 </Link>)}
@@ -150,48 +150,80 @@ function Dashboard() {
       </div>
     </div>;
 }
-function ZeroGNetworkPanel({ stats, loading }) {
+
+function ZeroGNetworkPanel({ stats, statsLoading, networkStatus }) {
+  const explorerUrl = networkStatus?.explorerUrl || "https://chainscan-newton.0g.ai";
+  const storageExplorerUrl = networkStatus?.storageExplorerUrl || "https://storagescan-newton.0g.ai";
+  const blockNumber = networkStatus?.blockNumber;
+  const chainId = networkStatus?.chainId;
+  const connected = networkStatus?.connected;
+
   const metrics = [
     {
       label: "0G Storage",
       icon: <Database size={16} className="text-primary" />,
       value: stats?.storageUsed ?? "-- MB",
-      detail: "Agent memory, preferences, history",
-      status: "SYNCED",
-      color: "primary"
+      detail: "Agent memory persisted on-chain",
+      status: networkStatus?.services?.storage?.enabled ? "ACTIVE" : "READY",
+      color: "primary",
+      link: storageExplorerUrl,
+      linkLabel: "StorageScan"
     },
     {
       label: "0G Compute",
       icon: <Cpu size={16} className="text-secondary" />,
-      value: `${stats?.teeExecutions ?? "--"} calls`,
-      detail: "AI inference, decision engine",
-      status: "ACTIVE",
-      color: "secondary"
+      value: networkStatus?.services?.compute?.enabled
+        ? (networkStatus.services.compute.model || "AI active")
+        : `${stats?.teeExecutions ?? "--"} calls`,
+      detail: networkStatus?.services?.compute?.enabled
+        ? "Real AI inference via 0G Compute"
+        : "Configure ZEROG_COMPUTE_API_KEY",
+      status: networkStatus?.services?.compute?.enabled ? "LIVE" : "STANDBY",
+      color: "secondary",
+      link: "https://compute-marketplace.0g.ai",
+      linkLabel: "Marketplace"
     },
     {
       label: "0G Chain",
       icon: <Hash size={16} className="text-green-400" />,
-      value: `${stats?.onChainTxns ?? "--"} txns`,
-      detail: "Agent identity, execution proofs",
-      status: "ONLINE",
-      color: "green"
+      value: blockNumber ? `#${blockNumber.toLocaleString()}` : `${stats?.onChainTxns ?? "--"} txns`,
+      detail: connected
+        ? `Chain ID: ${chainId} — Live`
+        : "Agent identity & execution proofs",
+      status: connected ? "ONLINE" : "CONNECTING",
+      color: "green",
+      link: explorerUrl,
+      linkLabel: "ChainScan"
     },
     {
       label: "TEE Enclave",
       icon: <Shield size={16} className="text-green-400" />,
       value: `${stats?.successRate ? (stats.successRate * 100).toFixed(1) : "--"}% success`,
-      detail: "Private sealed execution",
+      detail: "Private sealed execution layer",
       status: "SEALED",
-      color: "green"
+      color: "green",
+      link: null,
+      linkLabel: null
     }
   ];
+
   return <div className="border border-primary/20 bg-primary/3">
-      <div className="px-4 py-2.5 border-b border-primary/20 flex items-center justify-between">
+      <div className="px-4 py-2.5 border-b border-primary/20 flex items-center justify-between flex-wrap gap-2">
         <div className="text-xs uppercase tracking-widest text-primary font-bold flex items-center gap-2">
           <Server size={13} /> 0G Infrastructure Status
         </div>
-        <div className="text-[10px] text-green-400 flex items-center gap-1 font-mono">
-          <CheckCircle size={10} /> All systems nominal
+        <div className="flex items-center gap-3">
+          {blockNumber && <div className="text-[10px] text-muted-foreground font-mono flex items-center gap-1">
+            <Radio size={9} className="text-primary animate-pulse" />
+            Block {blockNumber.toLocaleString()}
+          </div>}
+          <div className={`text-[10px] flex items-center gap-1 font-mono ${connected ? "text-green-400" : "text-yellow-400"}`}>
+            <CheckCircle size={10} /> {connected ? "All systems nominal" : "Connecting..."}
+          </div>
+          <a href={explorerUrl} target="_blank" rel="noopener noreferrer"
+            className="text-[10px] text-primary/60 hover:text-primary flex items-center gap-0.5 transition-colors">
+            <ExternalLink size={9} /> Explorer
+          </a>
         </div>
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 divide-x divide-y lg:divide-y-0 divide-border/30">
@@ -199,18 +231,25 @@ function ZeroGNetworkPanel({ stats, loading }) {
             <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-muted-foreground">
               {m.icon} {m.label}
             </div>
-            {loading ? <div className="h-5 w-24 bg-muted/50 animate-pulse" /> : <div className={`text-sm font-bold font-mono ${m.color === "primary" ? "text-primary" : m.color === "secondary" ? "text-secondary" : "text-green-400"}`}>
+            {statsLoading ? <div className="h-5 w-24 bg-muted/50 animate-pulse" /> : <div className={`text-sm font-bold font-mono ${m.color === "primary" ? "text-primary" : m.color === "secondary" ? "text-secondary" : "text-green-400"}`}>
                 {m.value}
               </div>}
             <div className="text-[10px] text-muted-foreground/70">{m.detail}</div>
-            <div className={`text-[9px] font-mono flex items-center gap-1 ${m.color === "primary" ? "text-primary/60" : m.color === "secondary" ? "text-secondary/60" : "text-green-400/60"}`}>
-              <span className={`w-1 h-1 rounded-full animate-pulse ${m.color === "primary" ? "bg-primary" : m.color === "secondary" ? "bg-secondary" : "bg-green-400"}`} />
-              {m.status}
+            <div className="flex items-center justify-between">
+              <div className={`text-[9px] font-mono flex items-center gap-1 ${m.color === "primary" ? "text-primary/60" : m.color === "secondary" ? "text-secondary/60" : "text-green-400/60"}`}>
+                <span className={`w-1 h-1 rounded-full animate-pulse ${m.color === "primary" ? "bg-primary" : m.color === "secondary" ? "bg-secondary" : "bg-green-400"}`} />
+                {m.status}
+              </div>
+              {m.link && <a href={m.link} target="_blank" rel="noopener noreferrer"
+                className="text-[9px] text-muted-foreground/50 hover:text-primary flex items-center gap-0.5 transition-colors">
+                <ExternalLink size={8} /> {m.linkLabel}
+              </a>}
             </div>
           </div>)}
       </div>
     </div>;
 }
+
 function StatCard({ title, value, subValue, icon, loading, className = "" }) {
   return <Card className={`border-border/50 bg-card/50 backdrop-blur ${className}`}>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -225,6 +264,5 @@ function StatCard({ title, value, subValue, icon, loading, className = "" }) {
       </CardContent>
     </Card>;
 }
-export {
-  Dashboard as default
-};
+
+export default Dashboard;

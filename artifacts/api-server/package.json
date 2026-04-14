@@ -9,11 +9,14 @@
     "start": "node --enable-source-maps ./dist/index.mjs"
   },
   "dependencies": {
+    "@0gfoundation/0g-ts-sdk": "^1.2.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2",
     "drizzle-orm": "^0.45.1",
     "drizzle-zod": "^0.8.3",
+    "ethers": "^6.16.0",
     "express": "^5",
+    "openai": "^6.34.0",
     "pg": "^8.13.3",
     "pino": "^9",
     "pino-http": "^10",

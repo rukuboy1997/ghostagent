@@ -40,13 +40,39 @@ artifacts-monorepo/
 ## Key Features
 
 1. **Agent Creation** — Create unique AI agents with name, personality (aggressive/balanced/conservative), capabilities, and privacy settings
-2. **AI Chat Interface** — Real-time chat with your agent, returns AI responses with confidence scores and TEE proofs
+2. **AI Chat Interface** — Real-time chat with your agent using 0G Compute AI inference (falls back to pattern-matching when keys not set)
 3. **Autonomous Actions** — Execute trades, social posts, payments, negotiations, and analysis actions
-4. **Long-Term Memory** — 0G Storage-style memory with encrypted entries for sensitive data
+4. **Long-Term Memory** — Memory persisted on 0G Storage with real storage TX hashes and StorageScan explorer links
 5. **Reputation System** — On-chain reputation score with ranks (ghost → shadow → specter → phantom → wraith)
 6. **Agent Marketplace** — Browse and rent agent strategies from other users
-7. **Platform Dashboard** — Real-time stats, live activity feed, agent overview
+7. **Platform Dashboard** — Real-time stats from live 0G testnet (block number, chain ID), ChainScan/StorageScan explorer links
 8. **Mobile-Responsive Layout** — Hamburger menu on mobile, full horizontal nav on desktop
+
+## 0G Integration
+
+GhostAgent is aligned with the **0G APAC Hackathon** — Track 2 (Agentic Trading Arena) + Track 3 (Agentic Economy).
+
+### Environment Variables
+
+| Variable | Purpose | Required |
+|---|---|---|
+| `ZEROG_PRIVATE_KEY` | 0G Chain agent registration + 0G Storage upload signing | For real on-chain storage |
+| `ZEROG_COMPUTE_ENDPOINT` | 0G Compute API endpoint URL | For real AI inference |
+| `ZEROG_COMPUTE_API_KEY` | 0G Compute authentication key | For real AI inference |
+| `ZEROG_COMPUTE_MODEL` | Model name for 0G Compute (default: `llama-3.1-70b-instruct`) | Optional |
+
+All 0G integration features gracefully degrade when env vars are not set — the platform remains fully functional with simulated responses.
+
+### 0G Network (Testnet)
+
+- **RPC**: `https://evmrpc-testnet.0g.ai` (Chain ID: 16602)
+- **Storage Indexer**: `https://indexer-storage-testnet-turbo.0g.ai`
+- **ChainScan**: `https://chainscan-newton.0g.ai`
+- **StorageScan**: `https://storagescan-newton.0g.ai`
+
+### Core 0G Module
+
+`artifacts/api-server/src/lib/zerog.js` — all 0G SDK calls (storage upload, chain tx, compute chat)
 
 ## Database Schema
 
@@ -68,6 +94,7 @@ Tables are created via SQL (drizzle-kit push is not used due to npm workspace re
 - `GET /api/marketplace` — Marketplace listings
 - `GET /api/stats/platform` — Platform-wide statistics
 - `GET /api/stats/activity` — Recent activity feed
+- `GET /api/network/status` — Live 0G network status (block number, chain ID, service availability)
 
 ## Development
 

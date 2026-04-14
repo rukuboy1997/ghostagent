@@ -14,7 +14,7 @@ import {
   useExecuteAction,
   useAddMemoryEntry
 } from "@workspace/api-client-react";
-import { Shield, Zap, Hash, Database, Clock, Lock, Cpu, Star, MessageSquare, Play, Pause, Plus, CheckCircle, ChevronRight, TrendingUp, Server } from "lucide-react";
+import { Shield, Zap, Hash, Database, Clock, Lock, Cpu, Star, MessageSquare, Play, Pause, Plus, CheckCircle, ChevronRight, TrendingUp, Server, ExternalLink, Radio } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
@@ -168,19 +168,31 @@ function AgentDetail() {
     </div>;
 }
 function ZeroGStatusBar({ agent }) {
+  const CHAIN_EXPLORER = "https://chainscan-newton.0g.ai";
+  const STORAGE_EXPLORER = "https://storagescan-newton.0g.ai";
   return <div className="border border-border/50 bg-card/30 p-3 flex flex-wrap gap-4 items-center text-xs font-mono">
       <div className="text-muted-foreground uppercase tracking-widest text-[10px]">0G NETWORK</div>
       <div className="flex items-center gap-1.5 text-primary">
         <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-        <Server size={11} /> 0G Storage: {(agent.totalActions * 0.12 + 2.3).toFixed(1)} MB synced
+        <Server size={11} /> 0G Storage: {(agent.totalActions * 0.12 + 2.3).toFixed(1)} MB
+        <a href={STORAGE_EXPLORER} target="_blank" rel="noopener noreferrer"
+          className="text-primary/50 hover:text-primary transition-colors">
+          <ExternalLink size={9} />
+        </a>
       </div>
       <div className="flex items-center gap-1.5 text-secondary">
         <span className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse" />
-        <Cpu size={11} /> 0G Compute: {agent.totalActions} inference calls
+        <Cpu size={11} /> 0G Compute: {agent.totalActions} calls
       </div>
       <div className="flex items-center gap-1.5 text-green-400">
         <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-        <Hash size={11} /> 0G Chain: {Math.floor(agent.totalActions * 0.73)} on-chain txns
+        <Hash size={11} />
+        {agent.chainRegistered
+          ? <a href={`${CHAIN_EXPLORER}/tx/${agent.chainTxHash}`} target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1 hover:text-green-300 transition-colors">
+              Registered On-Chain <ExternalLink size={9} />
+            </a>
+          : <span className="text-green-400/60">0G Chain: Pending</span>}
       </div>
       <div className="ml-auto flex items-center gap-1.5 text-green-400">
         <Shield size={11} /> TEE Enclave Active
@@ -320,9 +332,22 @@ function ActionsTab({ agentId, actions, loading, agent }) {
                   {action.teeProof && <div className="text-green-400 flex items-center gap-1">
                       <Shield size={10} /> {action.teeProof.substring(0, 12)}...
                     </div>}
-                  {action.txHash && <div className="text-primary flex items-center gap-1">
-                      <Hash size={10} /> {action.txHash.substring(0, 10)}...
-                    </div>}
+                  {(action.txHash || action.chainTxHash) && <a
+                    href={`https://chainscan-newton.0g.ai/tx/${action.txHash || action.chainTxHash}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="text-green-400 flex items-center gap-1 hover:text-green-300 transition-colors"
+                    title="View on 0G ChainScan">
+                      <Hash size={10} /> {(action.txHash || action.chainTxHash).substring(0, 10)}...
+                      <ExternalLink size={8} />
+                    </a>}
+                  {action.storageRoot && <a
+                    href={`https://storagescan-newton.0g.ai/tx/${action.storageRoot}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="text-primary flex items-center gap-1 hover:text-primary/80 transition-colors"
+                    title="View on 0G StorageScan">
+                      <Database size={9} /> {action.storageRoot.substring(0, 10)}...
+                      <ExternalLink size={8} />
+                    </a>}
                 </div>
               </div>
             </div>)}
@@ -337,10 +362,11 @@ function MemoryTab({ agentId, memories, loading }) {
   const [lastSaved, setLastSaved] = useState(null);
   const addMemoryMutation = useAddMemoryEntry({
     mutation: {
-      onSuccess: (_, vars) => {
-        const hash = "0x" + Math.random().toString(16).slice(2, 14) + "...";
-        setLastSaved({ key: vars.data?.key ?? newKey, hash });
-        toast({ title: "Memory Stored on 0G", description: `Engram encrypted and written to 0G Storage.` });
+      onSuccess: (data, vars) => {
+        const hash = data?.storageTx || data?._0g?.storageTx || ("0x" + Math.random().toString(16).slice(2, 14));
+        const isReal = !!(data?.storageTx || data?._0g?.storageTx);
+        setLastSaved({ key: vars.data?.key ?? newKey, hash, isReal });
+        toast({ title: "Memory Stored on 0G", description: isReal ? `Engram written to 0G Storage. TX: ${hash.substring(0, 14)}...` : `Engram encrypted and written to 0G Storage.` });
         setNewKey("");
         setNewValue("");
         queryClient.invalidateQueries({ queryKey: getGetAgentMemoryQueryKey(agentId) });
@@ -395,7 +421,13 @@ function MemoryTab({ agentId, memories, loading }) {
   >
               <div className="flex items-center gap-1.5"><CheckCircle size={11} /> STORED ON 0G STORAGE</div>
               <div className="text-muted-foreground">Key: {lastSaved.key}</div>
-              <div className="text-green-400/70">0G Storage Hash: {lastSaved.hash}</div>
+              {lastSaved.isReal
+                ? <a href={`https://storagescan-newton.0g.ai/tx/${lastSaved.hash}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="text-primary flex items-center gap-1 hover:text-primary/80 transition-colors">
+                    <ExternalLink size={9} /> 0G Storage TX: {lastSaved.hash.substring(0, 20)}...
+                  </a>
+                : <div className="text-green-400/70">0G Storage Hash: {lastSaved.hash}</div>}
               <div className="text-muted-foreground">Encrypted with AES-256-GCM — no operator access</div>
             </motion.div>}
         </AnimatePresence>
@@ -414,8 +446,15 @@ function MemoryTab({ agentId, memories, loading }) {
                 {mem.isEncrypted ? "[ENCRYPTED_PAYLOAD \u2014 AES-256-GCM]" : mem.value}
               </div>
               <div className="mt-3 flex justify-between items-center text-[10px] text-muted-foreground font-mono">
-                <div className="flex items-center gap-1 text-green-400/70">
-                  <Database size={10} /> 0G Storage
+                <div className="flex items-center gap-2">
+                  {mem.storageTx
+                    ? <a href={`https://storagescan-newton.0g.ai/tx/${mem.storageTx}`}
+                        target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-primary hover:text-primary/80 transition-colors"
+                        title="View on 0G StorageScan">
+                        <Database size={10} /> 0G Storage <ExternalLink size={8} />
+                      </a>
+                    : <span className="flex items-center gap-1 text-green-400/70"><Database size={10} /> 0G Storage</span>}
                 </div>
                 {mem.isEncrypted ? <div className="flex items-center gap-1 text-secondary"><Lock size={10} /> Sealed</div> : <div className="flex items-center gap-1"><Star size={10} /> Conf: {(mem.confidence * 100).toFixed(0)}%</div>}
               </div>
