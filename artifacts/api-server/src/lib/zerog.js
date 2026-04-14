@@ -1,6 +1,9 @@
 import { Indexer, ZgFile } from "@0gfoundation/0g-ts-sdk";
 import { ethers } from "ethers";
 import OpenAI from "openai";
+import { writeFile, unlink, mkdtemp } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 const ZEROG_EVM_RPC = process.env.ZEROG_EVM_RPC || "https://evmrpc-testnet.0g.ai";
 const ZEROG_STORAGE_INDEXER = process.env.ZEROG_STORAGE_INDEXER || "https://indexer-storage-testnet-turbo.0g.ai";
@@ -34,29 +37,43 @@ export function isComputeEnabled() {
   return !!(ZEROG_COMPUTE_ENDPOINT && ZEROG_COMPUTE_API_KEY);
 }
 
+async function uploadJsonToStorage(data) {
+  const signer = getSigner();
+  const indexer = getIndexer();
+  const payload = JSON.stringify({
+    ...data,
+    uploadedAt: new Date().toISOString(),
+    platform: "GhostAgent",
+    network: "0G-Testnet"
+  });
+
+  const tmpDir = await mkdtemp(join(tmpdir(), "ghostagent-"));
+  const tmpPath = join(tmpDir, "upload.json");
+
+  try {
+    await writeFile(tmpPath, payload, "utf-8");
+    const zgFile = await ZgFile.fromFilePath(tmpPath);
+    const [tree, treeErr] = await zgFile.merkleTree();
+    if (treeErr) throw new Error(treeErr);
+    const rootHash = tree.rootHash();
+    const [tx, uploadErr] = await indexer.upload(zgFile, ZEROG_EVM_RPC, signer);
+    if (uploadErr) throw new Error(typeof uploadErr === "string" ? uploadErr : JSON.stringify(uploadErr));
+    const txHash = tx?.txHash || (typeof tx === "string" ? tx : null);
+    return { storageRoot: rootHash, storageTx: txHash };
+  } finally {
+    await unlink(tmpPath).catch(() => {});
+  }
+}
+
 export async function uploadMemoryToStorage(memoryData) {
   if (!isStorageEnabled()) {
     return { storageRoot: null, storageTx: null, error: "0G_STORAGE_NOT_CONFIGURED" };
   }
   try {
-    const signer = getSigner();
-    const indexer = getIndexer();
-    const payload = JSON.stringify({
-      ...memoryData,
-      uploadedAt: new Date().toISOString(),
-      platform: "GhostAgent",
-      network: "0G"
-    });
-    const buf = Buffer.from(payload, "utf-8");
-    const zgFile = ZgFile.fromBuffer(buf, "application/json");
-    const [tree, treeErr] = await zgFile.merkleTree();
-    if (treeErr) throw treeErr;
-    const rootHash = tree.rootHash();
-    const [tx, uploadErr] = await indexer.upload(zgFile, ZEROG_EVM_RPC, signer);
-    if (uploadErr) throw uploadErr;
-    return { storageRoot: rootHash, storageTx: tx };
+    const result = await uploadJsonToStorage(memoryData);
+    return result;
   } catch (err) {
-    console.error("[0G Storage] upload failed:", err?.message || err);
+    console.error("[0G Storage] memory upload failed:", err?.message || err);
     return { storageRoot: null, storageTx: null, error: err?.message };
   }
 }
@@ -66,22 +83,8 @@ export async function uploadActionResultToStorage(actionData) {
     return { storageRoot: null, error: "0G_STORAGE_NOT_CONFIGURED" };
   }
   try {
-    const signer = getSigner();
-    const indexer = getIndexer();
-    const payload = JSON.stringify({
-      ...actionData,
-      uploadedAt: new Date().toISOString(),
-      platform: "GhostAgent",
-      network: "0G"
-    });
-    const buf = Buffer.from(payload, "utf-8");
-    const zgFile = ZgFile.fromBuffer(buf, "application/json");
-    const [tree, treeErr] = await zgFile.merkleTree();
-    if (treeErr) throw treeErr;
-    const rootHash = tree.rootHash();
-    const [tx, uploadErr] = await indexer.upload(zgFile, ZEROG_EVM_RPC, signer);
-    if (uploadErr) throw uploadErr;
-    return { storageRoot: rootHash, storageTx: tx };
+    const result = await uploadJsonToStorage(actionData);
+    return { storageRoot: result.storageRoot };
   } catch (err) {
     console.error("[0G Storage] action upload failed:", err?.message || err);
     return { storageRoot: null, error: err?.message };
@@ -98,6 +101,7 @@ export async function registerAgentOnChain(agentData) {
       event: "agent_registered",
       agentId: agentData.agentId,
       name: agentData.name,
+      personality: agentData.personality,
       platform: "GhostAgent",
       timestamp: new Date().toISOString()
     });
@@ -163,14 +167,35 @@ export async function getNetworkStatus() {
       storageEnabled: isStorageEnabled(),
       computeEnabled: isComputeEnabled(),
       explorerUrl: ZEROG_EXPLORER,
-      storageExplorerUrl: ZEROG_STORAGE_EXPLORER
+      storageExplorerUrl: ZEROG_STORAGE_EXPLORER,
+      services: {
+        storage: {
+          enabled: isStorageEnabled(),
+          indexer: ZEROG_STORAGE_INDEXER,
+          explorerUrl: ZEROG_STORAGE_EXPLORER
+        },
+        compute: {
+          enabled: isComputeEnabled(),
+          model: isComputeEnabled() ? ZEROG_COMPUTE_MODEL : null,
+          endpoint: isComputeEnabled() ? ZEROG_COMPUTE_ENDPOINT : null
+        },
+        chain: {
+          rpc: ZEROG_EVM_RPC,
+          explorerUrl: ZEROG_EXPLORER
+        }
+      }
     };
   } catch (err) {
     return {
       connected: false,
       error: err?.message,
       storageEnabled: isStorageEnabled(),
-      computeEnabled: isComputeEnabled()
+      computeEnabled: isComputeEnabled(),
+      services: {
+        storage: { enabled: isStorageEnabled() },
+        compute: { enabled: isComputeEnabled() },
+        chain: { rpc: ZEROG_EVM_RPC }
+      }
     };
   }
 }

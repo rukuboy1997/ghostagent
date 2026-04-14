@@ -447,14 +447,22 @@ function MemoryTab({ agentId, memories, loading }) {
               </div>
               <div className="mt-3 flex justify-between items-center text-[10px] text-muted-foreground font-mono">
                 <div className="flex items-center gap-2">
-                  {mem.storageTx
-                    ? <a href={`https://storagescan-newton.0g.ai/tx/${mem.storageTx}`}
+                  {mem.storageRoot
+                    ? <a href={`https://storagescan-newton.0g.ai/file/${mem.storageRoot}`}
                         target="_blank" rel="noopener noreferrer"
                         className="flex items-center gap-1 text-primary hover:text-primary/80 transition-colors"
-                        title="View on 0G StorageScan">
+                        title="View file on 0G StorageScan">
                         <Database size={10} /> 0G Storage <ExternalLink size={8} />
                       </a>
                     : <span className="flex items-center gap-1 text-green-400/70"><Database size={10} /> 0G Storage</span>}
+                  {mem.storageTx
+                    ? <a href={`https://chainscan-newton.0g.ai/tx/${mem.storageTx}`}
+                        target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-accent hover:text-accent/80 transition-colors"
+                        title="View upload tx on 0G ChainScan">
+                        <Hash size={10} /> TX <ExternalLink size={8} />
+                      </a>
+                    : null}
                 </div>
                 {mem.isEncrypted ? <div className="flex items-center gap-1 text-secondary"><Lock size={10} /> Sealed</div> : <div className="flex items-center gap-1"><Star size={10} /> Conf: {(mem.confidence * 100).toFixed(0)}%</div>}
               </div>

@@ -111,6 +111,20 @@ ZEROG_COMPUTE_API_KEY=...
 VITE_API_URL=https://your-api.vercel.app
 ```
 
+## Live 0G Testnet Proof (Real Transactions)
+
+These transactions were executed live against the 0G Newton testnet during development:
+
+| Event | TX Hash | Explorer |
+|-------|---------|----------|
+| Agent NEXUS-1 chain registration | `0x8f97843a2b5b7a766a278f1f2349e829d9580395e3db71b897c85b4066ee0368` | [ChainScan](https://chainscan-newton.0g.ai/tx/0x8f97843a2b5b7a766a278f1f2349e829d9580395e3db71b897c85b4066ee0368) |
+| Agent SPECTER-X chain registration | `0xd752b48efb3ca2999118b33578d2304c001744ee38b8b467939eea8343ff7aac` | [ChainScan](https://chainscan-newton.0g.ai/tx/0xd752b48efb3ca2999118b33578d2304c001744ee38b8b467939eea8343ff7aac) |
+| Memory "BTC_SIGNAL" uploaded to 0G Storage | Root: `0xcab9fecd818fdf0f2a77bcded8544f871d808061973feec5053c3b20f9c5a83c` | [StorageScan](https://storagescan-newton.0g.ai/file/0xcab9fecd818fdf0f2a77bcded8544f871d808061973feec5053c3b20f9c5a83c) |
+| Memory upload TX | `0xd87cf3d8c6924d3f6448d5ebba53e6703960720f8832def15b15d6e60685afaa` | [ChainScan](https://chainscan-newton.0g.ai/tx/0xd87cf3d8c6924d3f6448d5ebba53e6703960720f8832def15b15d6e60685afaa) |
+| Memory "ALPHA_SIGNAL" uploaded to 0G Storage | Root: `0x0d1ecc2ad7ffea7a0ba255049630a4a0c15bcc8472f8e22b173078f1a9c39716` | [StorageScan](https://storagescan-newton.0g.ai/file/0x0d1ecc2ad7ffea7a0ba255049630a4a0c15bcc8472f8e22b173078f1a9c39716) |
+
+**Wallet**: `0x8209Dc2ab4E92Fe5dc70752883C95b342b83D094` on 0G Newton Testnet (Chain ID: 16602)
+
 ## Hackathon Tracks
 
 ### Track 2: Agentic Trading Arena
