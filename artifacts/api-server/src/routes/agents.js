@@ -9,6 +9,8 @@ import {
   chatWithAgent,
   isStorageEnabled,
   isComputeEnabled,
+  is0GComputeEnabled,
+  getComputeProvider,
   ZEROG_EXPLORER,
   ZEROG_STORAGE_EXPLORER
 } from "../lib/zerog";
@@ -129,11 +131,15 @@ router.post("/agents/:agentId/chat", async (req, res) => {
 
     let reply = null;
     let usedCompute = false;
+    let computeProvider = null;
+    let computeModel = null;
 
-    const computeReply = await chatWithAgent(agent, message, memoryEntries);
-    if (computeReply) {
-      reply = computeReply;
+    const computeResult = await chatWithAgent(agent, message, memoryEntries);
+    if (computeResult?.text) {
+      reply = computeResult.text;
       usedCompute = true;
+      computeProvider = computeResult.provider;
+      computeModel = computeResult.model;
     }
 
     if (!reply) {
@@ -243,21 +249,24 @@ router.post("/agents/:agentId/chat", async (req, res) => {
     }
 
     const confidence = parseFloat((Math.random() * 5 + 93).toFixed(2));
+    const is0G = computeProvider === "0G_COMPUTE";
     res.json({
       reply,
       confidence,
       teeProof: generateTeeProof(),
       reasoning: [
-        "DIRECTIVE RECEIVED: Parsing via 0G Compute AI inference...",
+        "DIRECTIVE RECEIVED: Parsing via AI inference...",
         `MEMORY CONTEXT: ${memoryEntries.length} entries loaded from 0G Storage`,
         `AGENT PROFILE: ${agent.personality} personality, ${(agent.capabilities || []).length} capabilities active`,
-        "0G COMPUTE: Generating response via verifiable inference...",
+        is0G ? "0G COMPUTE: Generating response via verifiable inference..." : "AI COMPUTE: Generating response via inference engine...",
         "TEE ENCLAVE SEALED: Response generated in private execution environment",
-        "RESPONSE READY: Transmitting from 0G Compute node"
+        "RESPONSE READY: Transmitting to secure terminal"
       ],
       _0g: {
         computeUsed: true,
-        model: process.env.ZEROG_COMPUTE_MODEL || "deepseek-chat-v3-0324",
+        provider: computeProvider,
+        is0GCompute: is0G,
+        model: computeModel,
         memoryEntriesUsed: memoryEntries.length
       }
     });

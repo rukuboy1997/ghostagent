@@ -11,7 +11,11 @@ const ZEROG_CHAIN_ID = process.env.ZEROG_CHAIN_ID || "16602";
 const ZEROG_PRIVATE_KEY = process.env.ZEROG_PRIVATE_KEY;
 const ZEROG_COMPUTE_ENDPOINT = process.env.ZEROG_COMPUTE_ENDPOINT;
 const ZEROG_COMPUTE_API_KEY = process.env.ZEROG_COMPUTE_API_KEY;
-const ZEROG_COMPUTE_MODEL = process.env.ZEROG_COMPUTE_MODEL || "deepseek-chat-v3-0324";
+const ZEROG_COMPUTE_MODEL = process.env.ZEROG_COMPUTE_MODEL || "qwen-2.5-7b-instruct";
+
+const FALLBACK_BASE_URL = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+const FALLBACK_API_KEY = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+const FALLBACK_MODEL = "gpt-4o-mini";
 
 export const ZEROG_EXPLORER = process.env.ZEROG_EXPLORER || "https://chainscan-newton.0g.ai";
 export const ZEROG_STORAGE_EXPLORER = process.env.ZEROG_STORAGE_EXPLORER || "https://storagescan-newton.0g.ai";
@@ -33,8 +37,18 @@ export function isStorageEnabled() {
   return !!ZEROG_PRIVATE_KEY;
 }
 
-export function isComputeEnabled() {
+export function is0GComputeEnabled() {
   return !!(ZEROG_COMPUTE_ENDPOINT && ZEROG_COMPUTE_API_KEY);
+}
+
+export function isComputeEnabled() {
+  return is0GComputeEnabled() || !!(FALLBACK_BASE_URL && FALLBACK_API_KEY);
+}
+
+export function getComputeProvider() {
+  if (is0GComputeEnabled()) return "0G_COMPUTE";
+  if (FALLBACK_BASE_URL && FALLBACK_API_KEY) return "FALLBACK";
+  return null;
 }
 
 async function uploadJsonToStorage(data) {
@@ -119,15 +133,10 @@ export async function registerAgentOnChain(agentData) {
 }
 
 export async function chatWithAgent(agent, userMessage, memoryContext) {
-  if (!isComputeEnabled()) {
-    return null;
-  }
-  try {
-    const openai = new OpenAI({
-      baseURL: `${ZEROG_COMPUTE_ENDPOINT}/v1/proxy`,
-      apiKey: ZEROG_COMPUTE_API_KEY
-    });
-    const systemPrompt = `You are ${agent.name}, an autonomous AI agent operating on the 0G Network.
+  const provider = getComputeProvider();
+  if (!provider) return null;
+
+  const systemPrompt = `You are ${agent.name}, an autonomous AI agent operating on the 0G Network.
 Personality: ${agent.personality}
 Capabilities: ${(agent.capabilities || []).join(", ")}
 ${agent.description ? `Description: ${agent.description}` : ""}
@@ -138,8 +147,34 @@ All your executions are TEE-verified and logged on 0G Chain.
 Your memory is stored on 0G Storage for persistence across sessions.
 Keep responses focused, decisive, and in-character. Mention relevant 0G network operations when appropriate.`;
 
+  if (provider === "0G_COMPUTE") {
+    try {
+      const openai = new OpenAI({
+        baseURL: `${ZEROG_COMPUTE_ENDPOINT}/v1/proxy`,
+        apiKey: ZEROG_COMPUTE_API_KEY
+      });
+      const completion = await openai.chat.completions.create({
+        model: ZEROG_COMPUTE_MODEL,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userMessage }
+        ],
+        max_tokens: 500,
+        temperature: 0.7
+      });
+      return { text: completion.choices[0]?.message?.content || null, provider: "0G_COMPUTE", model: ZEROG_COMPUTE_MODEL };
+    } catch (err) {
+      console.error("[0G Compute] chat failed, falling back:", err?.message || err);
+    }
+  }
+
+  try {
+    const openai = new OpenAI({
+      baseURL: FALLBACK_BASE_URL,
+      apiKey: FALLBACK_API_KEY
+    });
     const completion = await openai.chat.completions.create({
-      model: ZEROG_COMPUTE_MODEL,
+      model: FALLBACK_MODEL,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userMessage }
@@ -147,9 +182,9 @@ Keep responses focused, decisive, and in-character. Mention relevant 0G network 
       max_tokens: 500,
       temperature: 0.7
     });
-    return completion.choices[0]?.message?.content || null;
+    return { text: completion.choices[0]?.message?.content || null, provider: "FALLBACK", model: FALLBACK_MODEL };
   } catch (err) {
-    console.error("[0G Compute] chat failed:", err?.message || err);
+    console.error("[Compute Fallback] chat failed:", err?.message || err);
     return null;
   }
 }
@@ -176,8 +211,10 @@ export async function getNetworkStatus() {
         },
         compute: {
           enabled: isComputeEnabled(),
-          model: isComputeEnabled() ? ZEROG_COMPUTE_MODEL : null,
-          endpoint: isComputeEnabled() ? ZEROG_COMPUTE_ENDPOINT : null
+          is0GCompute: is0GComputeEnabled(),
+          provider: getComputeProvider(),
+          model: is0GComputeEnabled() ? ZEROG_COMPUTE_MODEL : isComputeEnabled() ? FALLBACK_MODEL : null,
+          endpoint: is0GComputeEnabled() ? ZEROG_COMPUTE_ENDPOINT : null
         },
         chain: {
           rpc: ZEROG_EVM_RPC,

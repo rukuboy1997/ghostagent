@@ -172,13 +172,21 @@ function ZeroGNetworkPanel({ stats, statsLoading, networkStatus }) {
     {
       label: "0G Compute",
       icon: <Cpu size={16} className="text-secondary" />,
-      value: networkStatus?.services?.compute?.enabled
-        ? (networkStatus.services.compute.model || "AI active")
+      value: networkStatus?.services?.compute?.is0GCompute
+        ? (networkStatus.services.compute.model || "qwen-2.5-7b-instruct")
+        : networkStatus?.services?.compute?.enabled
+        ? `${stats?.teeExecutions ?? "--"} calls`
         : `${stats?.teeExecutions ?? "--"} calls`,
-      detail: networkStatus?.services?.compute?.enabled
+      detail: networkStatus?.services?.compute?.is0GCompute
         ? "Real AI inference via 0G Compute"
-        : "Configure ZEROG_COMPUTE_API_KEY",
-      status: networkStatus?.services?.compute?.enabled ? "LIVE" : "STANDBY",
+        : networkStatus?.services?.compute?.enabled
+        ? "AI active — awaiting 0G tokens"
+        : "Awaiting 0G Compute tokens",
+      status: networkStatus?.services?.compute?.is0GCompute
+        ? "LIVE"
+        : networkStatus?.services?.compute?.enabled
+        ? "ACTIVE"
+        : "STANDBY",
       color: "secondary",
       link: "https://compute-marketplace.0g.ai",
       linkLabel: "Marketplace"
