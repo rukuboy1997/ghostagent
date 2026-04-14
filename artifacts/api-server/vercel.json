@@ -1,6 +1,10 @@
 {
-  "buildCommand": "node build.mjs",
+  "buildCommand": "npm install --legacy-peer-deps && node build.mjs",
+  "installCommand": "npm install --legacy-peer-deps",
   "rewrites": [
     { "source": "/(.*)", "destination": "/api/index.js" }
-  ]
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  }
 }
