@@ -262,10 +262,10 @@ export default function ConnectMT5() {
               </div>
             )}
 
-            {success && (
+            {connectMutation.isSuccess && !deploying && (
               <div className="border border-green-500/30 bg-green-500/5 p-3 text-sm text-green-300 flex items-center gap-2">
                 <CheckCircle size={14} />
-                MT5 account connected! {success.demo && "(Demo mode)"}
+                Account registered — syncing with broker…
               </div>
             )}
 

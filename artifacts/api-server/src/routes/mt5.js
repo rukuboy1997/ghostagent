@@ -68,21 +68,31 @@ router.get("/status", requireAuth(), async (req, res) => {
   }
 });
 
+const DEMO_ACCOUNT_INFO = { balance: 10000, equity: 10250, freeMargin: 9800, currency: "USD", leverage: 100, demo: true };
+const demoPrice = (symbol) => {
+  const base = symbol.includes("JPY") ? 149.50 : symbol.includes("GBP") ? 1.2750 : 1.0850;
+  const spread = 0.00015;
+  return { symbol, bid: (base - spread).toFixed(5), ask: (base + spread).toFixed(5), currentPrice: base.toFixed(5), change: (Math.random() * 0.4 - 0.2).toFixed(3), demo: true };
+};
+
 router.get("/account", requireAuth(), async (req, res) => {
   try {
     const { userId } = getAuth(req);
     const [user] = await db.select().from(users).where(eq(users.clerkId, userId));
     if (!user?.mt5AccountId) return res.status(404).json({ error: "No MT5 account connected" });
+    if (!isMetaApiEnabled() || user.mt5AccountId?.startsWith("demo-")) return res.json(DEMO_ACCOUNT_INFO);
 
-    if (!isMetaApiEnabled() || user.mt5AccountId?.startsWith("demo-")) {
-      return res.json({ balance: 10000, equity: 10250, freeMargin: 9800, currency: "USD", leverage: 100, demo: true });
-    }
+    // Check live status first — fall back to demo if not connected
+    try {
+      const status = await getAccountStatus(user.mt5AccountId);
+      if (status.connectionStatus !== "CONNECTED") return res.json({ ...DEMO_ACCOUNT_INFO, pending: true, state: status.state });
+    } catch (_) { return res.json(DEMO_ACCOUNT_INFO); }
 
     const info = await getAccountInfo(user.mt5AccountId);
     res.json(info);
   } catch (err) {
     req.log.error({ err }, "MT5 account info failed");
-    res.status(500).json({ error: err?.message || "Failed to get account info" });
+    res.json(DEMO_ACCOUNT_INFO);
   }
 });
 
@@ -92,18 +102,19 @@ router.get("/market/:symbol", requireAuth(), async (req, res) => {
     const { symbol } = req.params;
     const [user] = await db.select().from(users).where(eq(users.clerkId, userId));
     if (!user?.mt5AccountId) return res.status(404).json({ error: "No MT5 account connected" });
+    if (!isMetaApiEnabled() || user.mt5AccountId?.startsWith("demo-")) return res.json(demoPrice(symbol));
 
-    if (!isMetaApiEnabled() || user.mt5AccountId?.startsWith("demo-")) {
-      const base = symbol.includes("JPY") ? 149.50 : symbol.includes("GBP") ? 1.2750 : 1.0850;
-      const spread = 0.00015;
-      return res.json({ symbol, bid: (base - spread).toFixed(5), ask: (base + spread).toFixed(5), currentPrice: base.toFixed(5), change: (Math.random() * 0.4 - 0.2).toFixed(3), demo: true });
-    }
+    // Fall back to demo data if not connected
+    try {
+      const status = await getAccountStatus(user.mt5AccountId);
+      if (status.connectionStatus !== "CONNECTED") return res.json(demoPrice(symbol));
+    } catch (_) { return res.json(demoPrice(symbol)); }
 
     const data = await getMarketData(user.mt5AccountId, symbol);
     res.json(data);
   } catch (err) {
     req.log.error({ err }, "MT5 market data failed");
-    res.status(500).json({ error: err?.message || "Failed to get market data" });
+    res.json(demoPrice(req.params.symbol));
   }
 });
 
