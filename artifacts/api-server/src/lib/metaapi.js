@@ -42,6 +42,7 @@ export async function connectAccount(mt5Login, mt5Password, mt5Server) {
     server: mt5Server,
     platform: "mt5",
     magic: 123456,
+    reliability: "regular",
   });
 
   // Deploy fire-and-forget — don't wait
