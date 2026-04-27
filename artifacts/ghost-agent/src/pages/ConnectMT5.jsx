@@ -46,11 +46,10 @@ export default function ConnectMT5() {
   const { getToken } = useAuth();
   const qc = useQueryClient();
   const [form, setForm] = useState({ mt5Login: "", mt5Password: "", mt5Server: "" });
-  // Pre-fill from existing account once loaded
   const [prefilled, setPrefilled] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [success, setSuccess] = useState(null);
   const [error, setError] = useState(null);
+  const [deploying, setDeploying] = useState(false);
 
   const { data: me } = useQuery({
     queryKey: ["me"],
@@ -67,21 +66,32 @@ export default function ConnectMT5() {
     },
   });
 
-  const { data: accountInfo, refetch: refetchAccount } = useQuery({
+  // Poll connection status while deploying
+  const { data: statusData } = useQuery({
+    queryKey: ["mt5-status"],
+    queryFn: () => authGet("/api/mt5/status", getToken),
+    enabled: deploying || (!!me?.user?.mt5AccountId && !me.user.mt5AccountId.startsWith("demo-")),
+    refetchInterval: (data) => {
+      if (data?.connected) { setDeploying(false); return false; }
+      return 4000;
+    },
+    retry: false,
+  });
+
+  const { data: accountInfo } = useQuery({
     queryKey: ["mt5-account"],
     queryFn: () => authGet("/api/mt5/account", getToken),
-    enabled: !!me?.user?.mt5AccountId,
+    enabled: statusData?.connected === true,
     retry: false,
   });
 
   const connectMutation = useMutation({
     mutationFn: () => authPost("/api/mt5/connect", form, getToken),
-    onSuccess: (data) => {
-      setSuccess(data);
+    onSuccess: () => {
       setError(null);
+      setDeploying(true);
       qc.invalidateQueries({ queryKey: ["me"] });
-      qc.invalidateQueries({ queryKey: ["mt5-account"] });
-      qc.invalidateQueries({ queryKey: ["trading-status"] });
+      qc.invalidateQueries({ queryKey: ["mt5-status"] });
     },
     onError: (err) => {
       setError(err.message || "Connection failed");
@@ -91,7 +101,6 @@ export default function ConnectMT5() {
   const handleSubmit = (e) => {
     e.preventDefault();
     setError(null);
-    setSuccess(null);
     if (!form.mt5Login || !form.mt5Password || !form.mt5Server) {
       setError("All fields are required");
       return;
@@ -99,7 +108,7 @@ export default function ConnectMT5() {
     connectMutation.mutate();
   };
 
-  const alreadyConnected = !!me?.user?.mt5AccountId;
+  const alreadyConnected = statusData?.connected === true;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -112,12 +121,26 @@ export default function ConnectMT5() {
         </p>
       </div>
 
-      {me?.user?.mt5AccountId?.startsWith("demo-") && (
+      {(me?.user?.mt5AccountId?.startsWith("demo-") || (statusData && !statusData.connected && !deploying)) && (
         <div className="border border-yellow-500/30 bg-yellow-500/5 p-4 flex items-start gap-3">
           <AlertCircle size={18} className="text-yellow-400 shrink-0 mt-0.5" />
           <div className="text-sm text-yellow-300">
-            <div className="font-bold mb-1">Action required — re-enter your MT5 password</div>
-            Your account was saved in demo mode before MetaAPI was activated. Your login (<span className="font-mono text-yellow-200">{me.user.mt5Login}</span>) and server (<span className="font-mono text-yellow-200">{me.user.mt5Server}</span>) are pre-filled below — just enter your password and click Connect to go live.
+            <div className="font-bold mb-1">Action required — enter your MT5 password to connect</div>
+            {statusData && !statusData.connected
+              ? <>Your account (<span className="font-mono text-yellow-200">{statusData.login}</span> on <span className="font-mono text-yellow-200">{statusData.server}</span>) is registered but not yet connected (state: <span className="font-mono">{statusData.state}</span>). Enter your MT5 password below and click Connect to deploy it.</>
+              : <>Your account was saved in demo mode. Your login (<span className="font-mono text-yellow-200">{me?.user?.mt5Login}</span>) and server (<span className="font-mono text-yellow-200">{me?.user?.mt5Server}</span>) are pre-filled — just enter your password and click Connect.</>
+            }
+          </div>
+        </div>
+      )}
+
+      {deploying && !alreadyConnected && (
+        <div className="border border-primary/30 bg-primary/5 p-4 flex items-start gap-3">
+          <RefreshCw size={18} className="text-primary shrink-0 mt-0.5 animate-spin" />
+          <div className="text-sm text-primary">
+            <div className="font-bold mb-1">Connecting to {form.mt5Server || me?.user?.mt5Server}…</div>
+            <div className="text-muted-foreground">MetaAPI is deploying your account and syncing with your broker. This usually takes 30–90 seconds. Checking every 4 seconds…</div>
+            {statusData && <div className="mt-2 font-mono text-xs">State: {statusData.state} · {statusData.connectionStatus}</div>}
           </div>
         </div>
       )}

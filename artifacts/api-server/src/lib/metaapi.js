@@ -7,39 +7,33 @@ async function getApi() {
   if (_api) return _api;
   if (!METAAPI_TOKEN) throw new Error("METAAPI_TOKEN is not configured");
   if (!_MetaApi) {
-    try {
-      const mod = await import("metaapi.cloud-sdk/esm-node");
-      _MetaApi = mod.default || mod.MetaApi || mod;
-    } catch (err) {
-      throw new Error(`Failed to load MetaAPI SDK: ${err.message}`);
-    }
+    const mod = await import("metaapi.cloud-sdk/esm-node");
+    _MetaApi = mod.default || mod.MetaApi || mod;
   }
   _api = new _MetaApi(METAAPI_TOKEN);
   return _api;
 }
 
+// Connect (or find existing) account — returns accountId immediately without blocking on sync
 export async function connectAccount(mt5Login, mt5Password, mt5Server) {
   const api = await getApi();
 
-  // Check if account already exists in MetaAPI
-  let existing = null;
+  // Check if already provisioned in MetaAPI
   try {
     const { items } = await api.metatraderAccountApi.getAccountsWithInfiniteScrollPagination({ limit: 100 });
-    existing = items?.find(
+    const existing = items?.find(
       (a) => String(a.login) === String(mt5Login) && a.server === mt5Server
     );
-  } catch (_) {
-    // No accounts yet — that's fine
-  }
-
-  if (existing) {
-    if (existing.state !== "DEPLOYED") {
-      await existing.deploy();
-      await existing.waitConnected({ timeoutInSeconds: 120 });
+    if (existing) {
+      // Ensure it's deployed (fire-and-forget, don't block)
+      if (existing.state === "UNDEPLOYED") {
+        existing.deploy().catch(() => {});
+      }
+      return { accountId: existing.id, alreadyExisted: true, state: existing.state, connectionStatus: existing.connectionStatus };
     }
-    return { accountId: existing.id, alreadyExisted: true };
-  }
+  } catch (_) {}
 
+  // Create new account
   const account = await api.metatraderAccountApi.createAccount({
     name: `GhostAgent-${mt5Login}`,
     type: "cloud",
@@ -50,9 +44,22 @@ export async function connectAccount(mt5Login, mt5Password, mt5Server) {
     magic: 123456,
   });
 
-  await account.deploy();
-  await account.waitConnected({ timeoutInSeconds: 120 });
-  return { accountId: account.id, alreadyExisted: false };
+  // Deploy fire-and-forget — don't wait
+  account.deploy().catch(() => {});
+
+  return { accountId: account.id, alreadyExisted: false, state: "DEPLOYING" };
+}
+
+// Check connection status via REST (fast, no SDK overhead)
+export async function getAccountStatus(mt5AccountId) {
+  const TOKEN = METAAPI_TOKEN;
+  const res = await fetch(
+    `https://mt-provisioning-api-v1.agiliumtrade.agiliumtrade.ai/users/current/accounts/${mt5AccountId}`,
+    { headers: { "auth-token": TOKEN } }
+  );
+  if (!res.ok) throw new Error(`MetaAPI status check failed: ${res.status}`);
+  const a = await res.json();
+  return { state: a.state, connectionStatus: a.connectionStatus, server: a.server, login: a.login };
 }
 
 export async function getAccountInfo(mt5AccountId) {
@@ -103,13 +110,9 @@ export async function placeTrade(mt5AccountId, { symbol, type, volume, stopLoss,
   try {
     let result;
     if (type === "BUY") {
-      result = await connection.createMarketBuyOrder(symbol, volume, stopLoss, takeProfit, {
-        comment: "GhostAgent",
-      });
+      result = await connection.createMarketBuyOrder(symbol, volume, stopLoss, takeProfit, { comment: "GhostAgent" });
     } else if (type === "SELL") {
-      result = await connection.createMarketSellOrder(symbol, volume, stopLoss, takeProfit, {
-        comment: "GhostAgent",
-      });
+      result = await connection.createMarketSellOrder(symbol, volume, stopLoss, takeProfit, { comment: "GhostAgent" });
     } else {
       throw new Error("Invalid trade type");
     }

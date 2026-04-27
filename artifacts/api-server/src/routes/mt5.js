@@ -2,7 +2,7 @@ import { Router } from "express";
 import { requireAuth, getAuth } from "@clerk/express";
 import { eq } from "drizzle-orm";
 import { db, users } from "../db/index.js";
-import { connectAccount, getAccountInfo, getMarketData, getOpenTrades, isMetaApiEnabled } from "../lib/metaapi.js";
+import { connectAccount, getAccountInfo, getAccountStatus, getMarketData, getOpenTrades, isMetaApiEnabled } from "../lib/metaapi.js";
 
 const router = Router();
 
@@ -25,11 +25,13 @@ router.post("/connect", requireAuth(), async (req, res) => {
         mt5AccountId: `demo-${mt5Login}`,
         updatedAt: new Date()
       }).where(eq(users.clerkId, userId));
-      return res.json({ success: true, accountId: `demo-${mt5Login}`, demo: true, message: "Demo mode: MetaAPI not configured." });
+      return res.json({ success: true, accountId: `demo-${mt5Login}`, demo: true });
     }
 
-    const { accountId } = await connectAccount(mt5Login, mt5Password, mt5Server);
+    // Returns immediately — deploy runs in background
+    const { accountId, state } = await connectAccount(mt5Login, mt5Password, mt5Server);
 
+    // Save to DB right away
     await db.update(users).set({
       mt5Login: String(mt5Login),
       mt5Password,
@@ -38,10 +40,31 @@ router.post("/connect", requireAuth(), async (req, res) => {
       updatedAt: new Date()
     }).where(eq(users.clerkId, userId));
 
-    res.json({ success: true, accountId });
+    res.json({ success: true, accountId, state, message: "Account registered — deploying in background. Poll /api/mt5/status to track progress." });
   } catch (err) {
     req.log.error({ err }, "MT5 connect failed");
     res.status(500).json({ error: err?.message || "Failed to connect MT5 account" });
+  }
+});
+
+// Lightweight status poll — no SDK connection needed
+router.get("/status", requireAuth(), async (req, res) => {
+  try {
+    const { userId } = getAuth(req);
+    const [user] = await db.select().from(users).where(eq(users.clerkId, userId));
+    if (!user?.mt5AccountId) return res.json({ connected: false });
+    if (user.mt5AccountId.startsWith("demo-")) return res.json({ connected: true, state: "DEPLOYED", connectionStatus: "CONNECTED", demo: true });
+
+    const status = await getAccountStatus(user.mt5AccountId);
+    res.json({
+      connected: status.connectionStatus === "CONNECTED",
+      state: status.state,
+      connectionStatus: status.connectionStatus,
+      server: status.server,
+      login: status.login,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err?.message || "Failed to check status" });
   }
 });
 
@@ -52,14 +75,7 @@ router.get("/account", requireAuth(), async (req, res) => {
     if (!user?.mt5AccountId) return res.status(404).json({ error: "No MT5 account connected" });
 
     if (!isMetaApiEnabled() || user.mt5AccountId?.startsWith("demo-")) {
-      return res.json({
-        balance: 10000,
-        equity: 10250,
-        freeMargin: 9800,
-        currency: "USD",
-        leverage: 100,
-        demo: true
-      });
+      return res.json({ balance: 10000, equity: 10250, freeMargin: 9800, currency: "USD", leverage: 100, demo: true });
     }
 
     const info = await getAccountInfo(user.mt5AccountId);
@@ -78,16 +94,9 @@ router.get("/market/:symbol", requireAuth(), async (req, res) => {
     if (!user?.mt5AccountId) return res.status(404).json({ error: "No MT5 account connected" });
 
     if (!isMetaApiEnabled() || user.mt5AccountId?.startsWith("demo-")) {
-      const base = symbol.includes("USD") ? 1.0850 : symbol.includes("GBP") ? 1.2750 : symbol.includes("JPY") ? 149.50 : 1.0;
+      const base = symbol.includes("JPY") ? 149.50 : symbol.includes("GBP") ? 1.2750 : 1.0850;
       const spread = 0.00015;
-      return res.json({
-        symbol,
-        bid: (base - spread).toFixed(5),
-        ask: (base + spread).toFixed(5),
-        currentPrice: base.toFixed(5),
-        change: (Math.random() * 0.4 - 0.2).toFixed(3),
-        demo: true
-      });
+      return res.json({ symbol, bid: (base - spread).toFixed(5), ask: (base + spread).toFixed(5), currentPrice: base.toFixed(5), change: (Math.random() * 0.4 - 0.2).toFixed(3), demo: true });
     }
 
     const data = await getMarketData(user.mt5AccountId, symbol);
@@ -103,10 +112,7 @@ router.get("/positions", requireAuth(), async (req, res) => {
     const { userId } = getAuth(req);
     const [user] = await db.select().from(users).where(eq(users.clerkId, userId));
     if (!user?.mt5AccountId) return res.json([]);
-
-    if (!isMetaApiEnabled() || user.mt5AccountId?.startsWith("demo-")) {
-      return res.json([]);
-    }
+    if (!isMetaApiEnabled() || user.mt5AccountId?.startsWith("demo-")) return res.json([]);
 
     const positions = await getOpenTrades(user.mt5AccountId);
     res.json(positions);
