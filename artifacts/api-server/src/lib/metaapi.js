@@ -5,7 +5,7 @@ let _MetaApi = null;
 async function getMetaApiClass() {
   if (_MetaApi) return _MetaApi;
   try {
-    const mod = await import("metaapi.cloud-sdk/dists/esm-node/index.mjs");
+    const mod = await import("metaapi.cloud-sdk/esm-node");
     _MetaApi = mod.default || mod.MetaApi || mod;
     return _MetaApi;
   } catch (err) {
