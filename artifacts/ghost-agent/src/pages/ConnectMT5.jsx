@@ -28,6 +28,9 @@ async function authGet(path, getToken) {
 }
 
 const COMMON_SERVERS = [
+  "Deriv-Demo",
+  "Deriv-Server",
+  "Deriv-Server 2",
   "ICMarkets-Demo",
   "ICMarkets-Live01",
   "ICMarkets-Live02",
@@ -43,6 +46,8 @@ export default function ConnectMT5() {
   const { getToken } = useAuth();
   const qc = useQueryClient();
   const [form, setForm] = useState({ mt5Login: "", mt5Password: "", mt5Server: "" });
+  // Pre-fill from existing account once loaded
+  const [prefilled, setPrefilled] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [success, setSuccess] = useState(null);
   const [error, setError] = useState(null);
@@ -50,6 +55,16 @@ export default function ConnectMT5() {
   const { data: me } = useQuery({
     queryKey: ["me"],
     queryFn: () => authGet("/api/auth/me", getToken),
+    onSuccess: (data) => {
+      if (!prefilled && data?.user?.mt5Login) {
+        setForm((f) => ({
+          ...f,
+          mt5Login: data.user.mt5Login || "",
+          mt5Server: data.user.mt5Server || "",
+        }));
+        setPrefilled(true);
+      }
+    },
   });
 
   const { data: accountInfo, refetch: refetchAccount } = useQuery({
@@ -97,7 +112,17 @@ export default function ConnectMT5() {
         </p>
       </div>
 
-      {alreadyConnected && accountInfo && (
+      {me?.user?.mt5AccountId?.startsWith("demo-") && (
+        <div className="border border-yellow-500/30 bg-yellow-500/5 p-4 flex items-start gap-3">
+          <AlertCircle size={18} className="text-yellow-400 shrink-0 mt-0.5" />
+          <div className="text-sm text-yellow-300">
+            <div className="font-bold mb-1">Action required — re-enter your MT5 password</div>
+            Your account was saved in demo mode before MetaAPI was activated. Your login (<span className="font-mono text-yellow-200">{me.user.mt5Login}</span>) and server (<span className="font-mono text-yellow-200">{me.user.mt5Server}</span>) are pre-filled below — just enter your password and click Connect to go live.
+          </div>
+        </div>
+      )}
+
+      {alreadyConnected && accountInfo && !me?.user?.mt5AccountId?.startsWith("demo-") && (
         <Card className="border-green-500/30 bg-green-500/5">
           <CardHeader className="border-b border-green-500/20 pb-4">
             <CardTitle className="uppercase tracking-widest text-sm flex items-center gap-2 text-green-400">
