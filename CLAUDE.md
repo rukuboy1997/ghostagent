@@ -1,139 +1,65 @@
-# GhostAgent — 0G APAC Hackathon Project
+# GhostAgent — MT5 Trading SaaS
 
-## Project Overview
+GhostAgent is an autonomous AI trading SaaS. Users sign in with Clerk, connect their MT5 broker account via MetaAPI, deposit funds via Flutterwave, and let GhostAgent (powered by Cloudflare Workers AI / Deepseek R1) analyze markets and place trades autonomously.
 
-GhostAgent is a **privacy-first autonomous AI agent platform** built for the 0G APAC Hackathon (Track 2: Agentic Trading Arena + Track 3: Agentic Economy). Users deploy AI "Operatives" that autonomously execute financial trades, manage on-chain identities, and maintain verifiable memory — all backed by real 0G infrastructure.
+## Profit Split
+- 70% to the user
+- 30% to GhostAgent
+- After every 3 trades, user must pay GhostAgent's 30% share via Flutterwave to continue trading
 
-## 0G Integration Architecture
+## Architecture
 
-```
-User → GhostAgent UI → Express API
-                            ├── 0G Chain    (agent identity registration, tx proofs)
-                            ├── 0G Storage  (agent memory, encrypted preferences, execution logs)
-                            └── 0G Compute  (AI inference for autonomous decision-making)
-```
+### Frontend — `artifacts/ghost-agent`
+- React 19 + Vite + Tailwind v4
+- Clerk auth (`@clerk/react` v6) — embedded `<SignIn />` component, `useAuth()` hook
+- TanStack Query for server state
+- Flutterwave React SDK (`flutterwave-react-v3`) for payments
+- Pages: Dashboard, Trading, ConnectMT5, Account
 
-### 0G Products Used
+### Backend — `artifacts/api-server`
+- Express + Clerk middleware (`@clerk/express`)
+- Neon PostgreSQL via Drizzle ORM
+- Routes:
+  - `GET /api/healthz`
+  - `POST /api/auth/sync` — register/sync user from Clerk
+  - `GET /api/auth/me` — get current user
+  - `PATCH /api/auth/me` — update name/currency
+  - `POST /api/mt5/connect` — connect MT5 account via MetaAPI
+  - `GET /api/mt5/account` — MT5 account info
+  - `GET /api/mt5/market/:symbol` — live price data
+  - `GET /api/mt5/positions` — open positions
+  - `POST /api/trading/analyze` — AI market analysis (Cloudflare Workers AI)
+  - `POST /api/trading/execute` — place trade with 70/30 split
+  - `POST /api/trading/:tradeId/close` — close trade and calculate profit
+  - `GET /api/trading/history` — trade history
+  - `GET /api/trading/status` — balance, share gate status
+  - `POST /api/payments/verify-deposit` — verify Flutterwave deposit
+  - `POST /api/payments/verify-share` — verify GhostAgent share payment
+  - `GET /api/payments/history` — payment history
 
-| Product | Usage | File |
-|---------|-------|------|
-| **0G Storage** | Agent memory persisted on 0G decentralized storage with `storageRoot` and `storageTx` | `artifacts/api-server/src/lib/zerog.js` |
-| **0G Compute** | OpenAI-compatible AI inference for agent chat and autonomous decisions | `artifacts/api-server/src/lib/zerog.js` |
-| **0G Chain** | Agent registration as on-chain identity with `chainTxHash` | `artifacts/api-server/src/lib/zerog.js` |
+## Key Libraries
+- `metaapi.cloud-sdk` — MT5 cloud connection (uses `dists/esm-node/index.mjs` to avoid browser bundle issues; externalized in build.mjs)
+- `@cf/deepseek-ai/deepseek-r1-distill-qwen-32b` — via Cloudflare Workers AI REST API
+- `flutterwave-react-v3` — frontend payment widget
 
-### 0G Network (Testnet)
-- **RPC**: `https://evmrpc-testnet.0g.ai` (Chain ID: 16602)
-- **Storage Indexer**: `https://indexer-storage-testnet-turbo.0g.ai`
-- **ChainScan**: `https://chainscan-newton.0g.ai`
-- **StorageScan**: `https://storagescan-newton.0g.ai`
+## Environment Variables Required
+- `POSTGRES_URL` — Neon database URL
+- `CLERK_SECRET_KEY` — Clerk secret key
+- `CLERK_PUBLISHABLE_KEY` — Clerk publishable key  
+- `VITE_CLERK_PUBLISHABLE_KEY` — same, for frontend
+- `VITE_API_URL` — API base URL (auto-set by Replit)
+- `CLOUDFLARE_ACCOUNT_ID` — for Cloudflare Workers AI (optional, falls back to demo)
+- `CLOUDFLARE_API_TOKEN` — for Cloudflare Workers AI (optional)
+- `METAAPI_TOKEN` — for live MT5 trading (optional, falls back to demo mode)
 
-## Tech Stack
+## Demo Mode
+- If `METAAPI_TOKEN` not set: uses fake account data and simulated prices
+- If `CLOUDFLARE_ACCOUNT_ID`/`CLOUDFLARE_API_TOKEN` not set: uses random fallback analysis
 
-- **Frontend**: React 19 + Vite + Tailwind CSS + Framer Motion (cyberpunk dark theme)
-- **Backend**: Express 5 + Drizzle ORM + PostgreSQL (Neon)
-- **0G SDK**: `@0gfoundation/0g-ts-sdk`, `ethers`, `openai`
-- **Monorepo**: npm workspaces
+## DB Schema (Neon PostgreSQL, Drizzle ORM)
+- `users` — clerkId, email, balance, mt5 creds, trade counters
+- `trades` — symbol, type, volume, profit/userProfit/ghostShare, AI reasoning
+- `deposits` — Flutterwave tx tracking for deposits and ghost_share payments
 
-## Core Module: `artifacts/api-server/src/lib/zerog.js`
-
-```js
-// Upload agent memory to 0G Storage
-uploadMemoryToStorage({ agentId, key, value, category })
-  // Returns: { storageRoot, storageTx, storageExplorerUrl }
-
-// Register agent identity on 0G Chain
-registerAgentOnChain({ agentId, name, personality })
-  // Returns: { chainTxHash }
-
-// AI inference via 0G Compute
-chatWithAgent(agent, message, memoryEntries)
-  // Returns: AI response string | null (falls back to local if not configured)
-
-// Network status
-getNetworkStatus()
-  // Returns: { connected, chainId, blockNumber, services }
-```
-
-## Environment Variables
-
-```bash
-# Database (required)
-POSTGRES_URL=postgresql://...neon.tech/neondb   # Neon PostgreSQL (Vercel/production)
-DATABASE_URL=...                                  # Fallback (Replit dev)
-
-# 0G Network (optional — platform works without these, with graceful fallback)
-ZEROG_PRIVATE_KEY=0x...     # Wallet private key for 0G Storage + Chain registration
-ZEROG_COMPUTE_ENDPOINT=...  # 0G Compute API endpoint
-ZEROG_COMPUTE_API_KEY=...   # 0G Compute API key
-ZEROG_COMPUTE_MODEL=llama-3.1-70b-instruct  # Model name (default)
-```
-
-## API Routes
-
-```
-GET  /api/network/status        → Live 0G network status (block number, chain ID)
-GET  /api/agents                → List agents (includes chainRegistered, chainTxHash)
-POST /api/agents                → Create agent + register on 0G Chain (async)
-POST /api/agents/:id/chat       → Chat via 0G Compute AI (fallback: pattern matching)
-GET  /api/agents/:id/actions    → Action history with storageRoot (0G Storage proof)
-POST /api/agents/:id/actions    → Execute action + store on 0G Storage
-GET  /api/agents/:id/memory     → Memory entries with storageTx (0G Storage proof)
-POST /api/agents/:id/memory     → Add memory + upload to 0G Storage
-GET  /api/agents/:id/reputation → Agent reputation score + rank
-GET  /api/marketplace           → Marketplace agent listings
-GET  /api/stats/platform        → Platform-wide statistics
-GET  /api/stats/activity        → Recent activity feed
-```
-
-## Database Schema
-
-```sql
-agents          (id, name, personality, status, agent_id, chain_tx_hash, chain_registered, ...)
-agent_actions   (id, agent_id, type, title, status, result, tee_proof, storage_root, ...)
-memory_entries  (id, agent_id, category, key, value, is_encrypted, storage_root, storage_tx, ...)
-marketplace_listings (id, agent_id, strategy, price, rating, ...)
-```
-
-## Deployment
-
-### Backend (Vercel — `artifacts/api-server/`)
-```bash
-# Required env vars in Vercel project settings:
-DATABASE_URL=postgresql://...neon.tech/neondb
-ZEROG_PRIVATE_KEY=0x...
-ZEROG_COMPUTE_ENDPOINT=https://...
-ZEROG_COMPUTE_API_KEY=...
-```
-
-### Frontend (Vercel — `artifacts/ghost-agent/`)
-```bash
-# Required env vars in Vercel project settings:
-VITE_API_URL=https://your-api.vercel.app
-```
-
-## Live 0G Testnet Proof (Real Transactions)
-
-These transactions were executed live against the 0G Newton testnet during development:
-
-| Event | TX Hash | Explorer |
-|-------|---------|----------|
-| Agent NEXUS-1 chain registration | `0x8f97843a2b5b7a766a278f1f2349e829d9580395e3db71b897c85b4066ee0368` | [ChainScan](https://chainscan-newton.0g.ai/tx/0x8f97843a2b5b7a766a278f1f2349e829d9580395e3db71b897c85b4066ee0368) |
-| Agent SPECTER-X chain registration | `0xd752b48efb3ca2999118b33578d2304c001744ee38b8b467939eea8343ff7aac` | [ChainScan](https://chainscan-newton.0g.ai/tx/0xd752b48efb3ca2999118b33578d2304c001744ee38b8b467939eea8343ff7aac) |
-| Memory "BTC_SIGNAL" uploaded to 0G Storage | Root: `0xcab9fecd818fdf0f2a77bcded8544f871d808061973feec5053c3b20f9c5a83c` | [StorageScan](https://storagescan-newton.0g.ai/file/0xcab9fecd818fdf0f2a77bcded8544f871d808061973feec5053c3b20f9c5a83c) |
-| Memory upload TX | `0xd87cf3d8c6924d3f6448d5ebba53e6703960720f8832def15b15d6e60685afaa` | [ChainScan](https://chainscan-newton.0g.ai/tx/0xd87cf3d8c6924d3f6448d5ebba53e6703960720f8832def15b15d6e60685afaa) |
-| Memory "ALPHA_SIGNAL" uploaded to 0G Storage | Root: `0x0d1ecc2ad7ffea7a0ba255049630a4a0c15bcc8472f8e22b173078f1a9c39716` | [StorageScan](https://storagescan-newton.0g.ai/file/0x0d1ecc2ad7ffea7a0ba255049630a4a0c15bcc8472f8e22b173078f1a9c39716) |
-
-**Wallet**: `0x8209Dc2ab4E92Fe5dc70752883C95b342b83D094` on 0G Newton Testnet (Chain ID: 16602)
-
-## Hackathon Tracks
-
-### Track 2: Agentic Trading Arena
-- Agents autonomously execute trade, arbitrage, and analysis strategies
-- TEE-sealed execution with attestation proofs stored on 0G Storage
-- On-chain transaction hashes viewable on ChainScan
-
-### Track 3: Agentic Economy
-- Agents have on-chain identities registered via 0G Chain
-- Long-term memory stored on 0G decentralized storage (verifiable)
-- Agent marketplace for renting strategies between users
-- Reputation system with on-chain score tracking
+## Flutterwave Public Key
+`FLWPUBK-878fa54677d7b3dc8a6d40e1ae90ca64-X` (set in Account.jsx)

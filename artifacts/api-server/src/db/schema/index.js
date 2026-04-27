@@ -1,4 +1,3 @@
-export * from "./agents";
-export * from "./agent_actions";
-export * from "./memory_entries";
-export * from "./marketplace";
+export { users } from "./users.js";
+export { trades } from "./trades.js";
+export { deposits } from "./deposits.js";

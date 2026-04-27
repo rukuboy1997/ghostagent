@@ -40,6 +40,8 @@ async function buildAll() {
       "@0gfoundation/0g-ts-sdk",
       "ethers",
       "openai",
+      "metaapi.cloud-sdk",
+      "metaapi.cloud-sdk/*",
       "open-jsonrpc-provider",
       "@ethersproject/*",
       "*.node",

@@ -1,11 +1,9 @@
 import { Router } from "express";
-import { HealthCheckResponse } from "../zod";
+
 const router = Router();
+
 router.get("/healthz", (_req, res) => {
-  const data = HealthCheckResponse.parse({ status: "ok" });
-  res.json(data);
+  res.json({ status: "ok" });
 });
-var stdin_default = router;
-export {
-  stdin_default as default
-};
+
+export default router;

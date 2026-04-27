@@ -1,276 +1,271 @@
-import {
-  useGetPlatformStats,
-  getGetPlatformStatsQueryKey,
-  useGetRecentActivity,
-  getGetRecentActivityQueryKey,
-  useGetAgents,
-  getGetAgentsQueryKey
-} from "@workspace/api-client-react";
-import { useQuery } from "@tanstack/react-query";
-import { Activity, Shield, Zap, Hash, Database, Clock, Terminal, Server, Cpu, Lock, CheckCircle, TrendingUp, ExternalLink, Radio } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAuth, useUser } from "@clerk/react";
 import { Link } from "wouter";
-import { motion } from "framer-motion";
+import { TrendingUp, TrendingDown, DollarSign, Activity, Plug, AlertCircle, RefreshCw, BarChart2, Clock } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { getApiUrl } from "@/lib/api";
 
-function Dashboard() {
-  const { data: stats, isLoading: statsLoading } = useGetPlatformStats({
-    query: { queryKey: getGetPlatformStatsQueryKey() }
+async function authGet(path, getToken) {
+  const token = await getToken();
+  const res = await fetch(getApiUrl(path), {
+    headers: { Authorization: `Bearer ${token}` },
   });
-  const { data: activities, isLoading: activitiesLoading } = useGetRecentActivity({
-    query: { queryKey: getGetRecentActivityQueryKey() }
-  });
-  const { data: agents, isLoading: agentsLoading } = useGetAgents({
-    query: { queryKey: getGetAgentsQueryKey() }
-  });
-  const { data: networkStatus } = useQuery({
-    queryKey: ["network-status"],
-    queryFn: async () => {
-      const r = await fetch(getApiUrl("/api/network/status"));
-      if (!r.ok) throw new Error("network status failed");
-      return r.json();
+  if (!res.ok) throw new Error("Failed to fetch");
+  return res.json();
+}
+
+export default function Dashboard() {
+  const { getToken, isSignedIn } = useAuth();
+  const { user } = useUser();
+  const qc = useQueryClient();
+
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      const token = await getToken();
+      const res = await fetch(getApiUrl("/api/auth/sync"), {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ email: user?.primaryEmailAddress?.emailAddress, name: user?.fullName }),
+      });
+      return res.json();
     },
-    refetchInterval: 15000,
-    staleTime: 10000
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["me"] }),
   });
 
-  return <div className="space-y-6 animate-in fade-in duration-500">
+  const { data: me } = useQuery({
+    queryKey: ["me"],
+    queryFn: () => authGet("/api/auth/me", getToken),
+    enabled: isSignedIn,
+    retry: false,
+  });
+
+  const { data: status } = useQuery({
+    queryKey: ["trading-status"],
+    queryFn: () => authGet("/api/trading/status", getToken),
+    enabled: isSignedIn,
+    refetchInterval: 30000,
+  });
+
+  const { data: tradeHistory, isLoading: historyLoading } = useQuery({
+    queryKey: ["trade-history"],
+    queryFn: () => authGet("/api/trading/history", getToken),
+    enabled: isSignedIn,
+  });
+
+  useEffect(() => {
+    if (isSignedIn && user && !me) {
+      syncMutation.mutate();
+    }
+  }, [isSignedIn, user?.id]);
+
+  const totalPL = tradeHistory?.reduce((sum, t) => sum + Number(t.userProfit || 0), 0) ?? 0;
+  const winCount = tradeHistory?.filter((t) => t.status === "profit").length ?? 0;
+  const totalClosed = tradeHistory?.filter((t) => t.status !== "open" && t.status !== "pending").length ?? 0;
+  const winRate = totalClosed > 0 ? ((winCount / totalClosed) * 100).toFixed(0) : "--";
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex items-center justify-between border-b border-border/50 pb-4">
         <div>
           <h2 className="text-2xl font-bold uppercase tracking-widest text-primary flex items-center gap-2">
-            <Terminal size={24} /> Global Command
+            <Activity size={24} /> Dashboard
           </h2>
-          <p className="text-muted-foreground text-sm uppercase tracking-wider mt-1">Platform Telemetry & Operations</p>
+          <p className="text-muted-foreground text-sm uppercase tracking-wider mt-1">
+            Welcome back, {user?.firstName || "Trader"}
+          </p>
         </div>
         <div className="text-right">
-          <div className="text-xs text-muted-foreground uppercase tracking-wider">System Status</div>
-          <div className="text-green-400 text-sm font-bold flex items-center gap-2 justify-end">
-            <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-            {networkStatus?.connected ? "NOMINAL" : "DEGRADED"}
+          <div className="text-xs text-muted-foreground uppercase tracking-wider">Portfolio Balance</div>
+          <div className="text-2xl font-bold text-primary font-mono">
+            ${Number(me?.user?.balance ?? 0).toFixed(2)}
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Active Operatives" value={stats?.activeAgents ?? "--"} subValue={`/ ${stats?.totalAgents ?? "--"} Total`} icon={<Zap size={18} className="text-primary" />} loading={statsLoading} />
-        <div className="relative group">
-          <div className="absolute inset-0 bg-primary/20 blur-xl opacity-0 group-hover:opacity-100 transition-opacity" />
-          <StatCard title="Value Managed" value={stats?.totalValueManaged ?? "--"} icon={<TrendingUp size={18} className="text-secondary" />} loading={statsLoading} className="border-primary/50 bg-primary/5 relative z-10" />
+      {!me?.user?.mt5AccountId && (
+        <div className="border border-yellow-500/30 bg-yellow-500/5 p-4 flex items-center gap-3">
+          <AlertCircle size={18} className="text-yellow-400 shrink-0" />
+          <div className="flex-1 text-sm text-yellow-300">
+            No MT5 account connected. Connect your broker account to start trading.
+          </div>
+          <Link href="/connect-mt5">
+            <Button size="sm" variant="outline" className="border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10 uppercase text-xs tracking-widest">
+              <Plug size={14} className="mr-1" /> Connect MT5
+            </Button>
+          </Link>
         </div>
-        <StatCard title="TEE Executions" value={stats?.teeExecutions ?? "--"} subValue={`${stats?.successRate ? (stats.successRate * 100).toFixed(1) : "--"}% Success`} icon={<Shield size={18} className="text-green-400" />} loading={statsLoading} />
-        <StatCard title="On-Chain Txns" value={stats?.onChainTxns ?? "--"} icon={<Hash size={18} className="text-primary" />} loading={statsLoading} />
-      </div>
+      )}
 
-      <ZeroGNetworkPanel stats={stats} statsLoading={statsLoading} networkStatus={networkStatus} />
+      {status?.shareRequired && (
+        <div className="border border-red-500/30 bg-red-500/5 p-4 flex items-center gap-3">
+          <AlertCircle size={18} className="text-red-400 shrink-0" />
+          <div className="flex-1 text-sm text-red-300">
+            GhostAgent's 30% share is due. Pay to unlock your next {3} trades.
+          </div>
+          <Link href="/account">
+            <Button size="sm" variant="outline" className="border-red-500/50 text-red-400 hover:bg-red-500/10 uppercase text-xs tracking-widest">
+              Pay Share
+            </Button>
+          </Link>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          title="Balance"
+          value={`$${Number(me?.user?.balance ?? 0).toFixed(2)}`}
+          sub={me?.user?.currency || "USD"}
+          icon={<DollarSign size={18} className="text-primary" />}
+        />
+        <StatCard
+          title="Total Trades"
+          value={status?.totalTrades ?? "--"}
+          sub={`${status?.tradesUntilShare ?? "--"} until share`}
+          icon={<BarChart2 size={18} className="text-secondary" />}
+        />
+        <StatCard
+          title="Win Rate"
+          value={winRate !== "--" ? `${winRate}%` : "--"}
+          sub={`${winCount}/${totalClosed} trades`}
+          icon={<TrendingUp size={18} className="text-green-400" />}
+        />
+        <StatCard
+          title="Total P&L"
+          value={`$${totalPL.toFixed(2)}`}
+          sub="Your 70% share"
+          icon={totalPL >= 0 ? <TrendingUp size={18} className="text-green-400" /> : <TrendingDown size={18} className="text-red-400" />}
+          valueClass={totalPL >= 0 ? "text-green-400" : "text-red-400"}
+        />
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2 border-border/50 bg-card/50 backdrop-blur">
           <CardHeader className="border-b border-border/50 pb-4">
             <CardTitle className="uppercase tracking-widest text-sm flex items-center gap-2 text-primary">
-              <Activity size={16} /> Live Feed
+              <Clock size={16} /> Recent Trades
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="max-h-[400px] overflow-y-auto p-4 space-y-2">
-              {activitiesLoading ? <div className="space-y-3">{[1, 2, 3, 4].map((i) => <div key={i} className="h-14 bg-muted/50 animate-pulse border border-border/50" />)}</div> : !activities?.length ? <div className="text-center p-8 text-muted-foreground font-mono text-sm">NO ACTIVITY DETECTED</div> : activities.map((item, idx) => <motion.div
-    key={item.id}
-    initial={{ opacity: 0, x: -10 }}
-    animate={{ opacity: 1, x: 0 }}
-    transition={{ delay: idx * 0.04 }}
-    className="p-3 border border-border/30 bg-background/50 hover:border-primary/50 transition-colors group relative overflow-hidden"
-  >
-                    <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-primary/50 transform origin-top scale-y-0 group-hover:scale-y-100 transition-transform" />
-                    <div className="flex justify-between items-start gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                          <span className="font-bold text-primary text-xs">{item.agentName}</span>
-                          <span className="text-[10px] uppercase px-1 border border-border text-muted-foreground">{item.type}</span>
-                          {item.isPrivate && <span className="text-[10px] text-secondary flex items-center gap-0.5">
-                              <Lock size={9} /> SEALED
-                            </span>}
-                        </div>
-                        <p className="text-xs text-foreground/80 font-mono truncate">{item.action}</p>
-                        {item.value && <p className="text-[10px] text-primary mt-0.5 font-mono">{item.value}</p>}
-                      </div>
-                      <div className="text-right flex-shrink-0">
-                        <div className="flex items-center gap-1 text-[10px] text-muted-foreground justify-end">
-                          <Clock size={10} />
-                          {new Date(item.timestamp).toLocaleTimeString()}
-                        </div>
-                        {item.teeVerified && <div className="text-[10px] text-green-400 flex items-center gap-1 justify-end mt-0.5">
-                            <Shield size={9} /> TEE
-                          </div>}
-                      </div>
-                    </div>
-                  </motion.div>)}
+            <div className="max-h-[400px] overflow-y-auto">
+              {historyLoading ? (
+                <div className="p-4 space-y-3">
+                  {[1, 2, 3].map((i) => <div key={i} className="h-14 bg-muted/50 animate-pulse border border-border/50" />)}
+                </div>
+              ) : !tradeHistory?.length ? (
+                <div className="text-center p-8 text-muted-foreground font-mono text-sm">
+                  NO TRADES YET
+                  <br />
+                  <Link href="/trading">
+                    <span className="text-primary hover:underline cursor-pointer mt-2 inline-block">Start your first trade</span>
+                  </Link>
+                </div>
+              ) : (
+                tradeHistory.slice(0, 20).map((trade) => (
+                  <TradeRow key={trade.id} trade={trade} />
+                ))
+              )}
             </div>
           </CardContent>
         </Card>
 
         <Card className="border-border/50 bg-card/50 backdrop-blur">
           <CardHeader className="border-b border-border/50 pb-4">
-            <div className="flex justify-between items-center">
-              <CardTitle className="uppercase tracking-widest text-sm flex items-center gap-2 text-primary">
-                <Hash size={16} /> My Operatives
-              </CardTitle>
-              <Link href="/agents/new">
-                <div className="text-xs px-2 py-1 bg-primary/20 hover:bg-primary text-primary hover:text-primary-foreground border border-primary/50 transition-colors uppercase tracking-widest cursor-pointer">
-                  Deploy New
-                </div>
+            <CardTitle className="uppercase tracking-widest text-sm flex items-center gap-2 text-primary">
+              <Activity size={16} /> Status
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 space-y-4">
+            <StatusRow label="MT5 Connected" value={status?.hasMt5 ? "YES" : "NO"} ok={status?.hasMt5} />
+            <StatusRow label="Balance OK" value={Number(status?.balance) >= 5 ? "YES" : "NO"} ok={Number(status?.balance) >= 5} />
+            <StatusRow label="Can Trade" value={status?.canTrade ? "YES" : "NO"} ok={status?.canTrade} />
+            <StatusRow label="Share Due" value={status?.shareRequired ? "YES" : "NO"} ok={!status?.shareRequired} />
+
+            <div className="border-t border-border/50 pt-4 space-y-2">
+              <div className="text-xs text-muted-foreground uppercase tracking-wider">Profit Split</div>
+              <div className="flex justify-between text-sm">
+                <span className="text-foreground/70">You</span>
+                <span className="text-green-400 font-bold font-mono">70%</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-foreground/70">GhostAgent</span>
+                <span className="text-primary font-bold font-mono">30%</span>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2 pt-2">
+              <Link href="/trading">
+                <Button className="w-full uppercase tracking-widest text-xs" disabled={!status?.canTrade}>
+                  <TrendingUp size={14} className="mr-1" /> Trade Now
+                </Button>
+              </Link>
+              <Link href="/account">
+                <Button variant="outline" className="w-full uppercase tracking-widest text-xs">
+                  <DollarSign size={14} className="mr-1" /> Deposit
+                </Button>
               </Link>
             </div>
-          </CardHeader>
-          <CardContent className="p-4 space-y-3">
-            {agentsLoading ? <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="h-20 bg-muted/50 animate-pulse border border-border/50" />)}</div> : !agents?.length ? <div className="text-center p-6 text-muted-foreground text-sm border border-dashed border-border/50 bg-background/30">
-                No operatives deployed.<br /><br />
-                <Link href="/agents/new"><span className="text-primary hover:underline cursor-pointer">Deploy your first agent</span></Link>
-              </div> : agents.slice(0, 5).map((agent) => <Link href={`/agents/${agent.id}`} key={agent.id}>
-                  <div className="p-3 border border-border/50 bg-background/50 hover:border-primary/50 transition-all cursor-pointer group flex flex-col gap-2">
-                    <div className="flex justify-between items-center">
-                      <div className="font-bold text-sm text-foreground group-hover:text-primary transition-colors">{agent.name}</div>
-                      <div className={`text-[10px] uppercase tracking-widest px-1.5 py-0.5 border ${agent.status === "active" ? "text-green-400 border-green-400/50 bg-green-400/10" : agent.status === "executing" ? "text-primary border-primary/50 bg-primary/10 animate-pulse" : "text-muted-foreground border-border bg-muted/20"}`}>
-                        {agent.status}
-                      </div>
-                    </div>
-                    <div className="flex gap-2 flex-wrap">
-                      <div className="text-[10px] text-muted-foreground bg-muted/30 px-1 py-0.5">REP: {agent.reputationScore}</div>
-                      <div className="text-[10px] text-muted-foreground bg-muted/30 px-1 py-0.5 uppercase">{agent.personality}</div>
-                      {agent.teeVerified && <div className="text-[10px] text-green-400/70 flex items-center gap-0.5"><Shield size={9} /> TEE</div>}
-                      {agent.chainRegistered && <div className="text-[10px] text-primary/70 flex items-center gap-0.5"><Hash size={9} /> ON-CHAIN</div>}
-                    </div>
-                  </div>
-                </Link>)}
-            {agents && agents.length > 5 && <Link href="/agents">
-                <div className="text-xs text-center text-primary/70 hover:text-primary cursor-pointer p-2 border border-dashed border-primary/30 hover:border-primary/60 transition-colors uppercase tracking-widest">
-                  View All Operatives
-                </div>
-              </Link>}
           </CardContent>
         </Card>
       </div>
-    </div>;
+    </div>
+  );
 }
 
-function ZeroGNetworkPanel({ stats, statsLoading, networkStatus }) {
-  const explorerUrl = networkStatus?.explorerUrl || "https://chainscan-newton.0g.ai";
-  const storageExplorerUrl = networkStatus?.storageExplorerUrl || "https://storagescan-newton.0g.ai";
-  const blockNumber = networkStatus?.blockNumber;
-  const chainId = networkStatus?.chainId;
-  const connected = networkStatus?.connected;
-
-  const metrics = [
-    {
-      label: "0G Storage",
-      icon: <Database size={16} className="text-primary" />,
-      value: stats?.storageUsed ?? "-- MB",
-      detail: "Agent memory persisted on-chain",
-      status: networkStatus?.services?.storage?.enabled ? "ACTIVE" : "READY",
-      color: "primary",
-      link: storageExplorerUrl,
-      linkLabel: "StorageScan"
-    },
-    {
-      label: "0G Compute",
-      icon: <Cpu size={16} className="text-secondary" />,
-      value: networkStatus?.services?.compute?.is0GCompute
-        ? (networkStatus.services.compute.model || "qwen-2.5-7b-instruct")
-        : networkStatus?.services?.compute?.enabled
-        ? `${stats?.teeExecutions ?? "--"} calls`
-        : `${stats?.teeExecutions ?? "--"} calls`,
-      detail: networkStatus?.services?.compute?.is0GCompute
-        ? "Real AI inference via 0G Compute"
-        : networkStatus?.services?.compute?.enabled
-        ? "AI active — awaiting 0G tokens"
-        : "Awaiting 0G Compute tokens",
-      status: networkStatus?.services?.compute?.is0GCompute
-        ? "LIVE"
-        : networkStatus?.services?.compute?.enabled
-        ? "ACTIVE"
-        : "STANDBY",
-      color: "secondary",
-      link: "https://compute-marketplace.0g.ai",
-      linkLabel: "Marketplace"
-    },
-    {
-      label: "0G Chain",
-      icon: <Hash size={16} className="text-green-400" />,
-      value: blockNumber ? `#${blockNumber.toLocaleString()}` : `${stats?.onChainTxns ?? "--"} txns`,
-      detail: connected
-        ? `Chain ID: ${chainId} — Live`
-        : "Agent identity & execution proofs",
-      status: connected ? "ONLINE" : "CONNECTING",
-      color: "green",
-      link: explorerUrl,
-      linkLabel: "ChainScan"
-    },
-    {
-      label: "TEE Enclave",
-      icon: <Shield size={16} className="text-green-400" />,
-      value: `${stats?.successRate ? (stats.successRate * 100).toFixed(1) : "--"}% success`,
-      detail: "Private sealed execution layer",
-      status: "SEALED",
-      color: "green",
-      link: null,
-      linkLabel: null
-    }
-  ];
-
-  return <div className="border border-primary/20 bg-primary/3">
-      <div className="px-4 py-2.5 border-b border-primary/20 flex items-center justify-between flex-wrap gap-2">
-        <div className="text-xs uppercase tracking-widest text-primary font-bold flex items-center gap-2">
-          <Server size={13} /> 0G Infrastructure Status
-        </div>
-        <div className="flex items-center gap-3">
-          {blockNumber && <div className="text-[10px] text-muted-foreground font-mono flex items-center gap-1">
-            <Radio size={9} className="text-primary animate-pulse" />
-            Block {blockNumber.toLocaleString()}
-          </div>}
-          <div className={`text-[10px] flex items-center gap-1 font-mono ${connected ? "text-green-400" : "text-yellow-400"}`}>
-            <CheckCircle size={10} /> {connected ? "All systems nominal" : "Connecting..."}
-          </div>
-          <a href={explorerUrl} target="_blank" rel="noopener noreferrer"
-            className="text-[10px] text-primary/60 hover:text-primary flex items-center gap-0.5 transition-colors">
-            <ExternalLink size={9} /> Explorer
-          </a>
-        </div>
-      </div>
-      <div className="grid grid-cols-2 lg:grid-cols-4 divide-x divide-y lg:divide-y-0 divide-border/30">
-        {metrics.map((m, i) => <div key={i} className="p-4 flex flex-col gap-1.5">
-            <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-muted-foreground">
-              {m.icon} {m.label}
-            </div>
-            {statsLoading ? <div className="h-5 w-24 bg-muted/50 animate-pulse" /> : <div className={`text-sm font-bold font-mono ${m.color === "primary" ? "text-primary" : m.color === "secondary" ? "text-secondary" : "text-green-400"}`}>
-                {m.value}
-              </div>}
-            <div className="text-[10px] text-muted-foreground/70">{m.detail}</div>
-            <div className="flex items-center justify-between">
-              <div className={`text-[9px] font-mono flex items-center gap-1 ${m.color === "primary" ? "text-primary/60" : m.color === "secondary" ? "text-secondary/60" : "text-green-400/60"}`}>
-                <span className={`w-1 h-1 rounded-full animate-pulse ${m.color === "primary" ? "bg-primary" : m.color === "secondary" ? "bg-secondary" : "bg-green-400"}`} />
-                {m.status}
-              </div>
-              {m.link && <a href={m.link} target="_blank" rel="noopener noreferrer"
-                className="text-[9px] text-muted-foreground/50 hover:text-primary flex items-center gap-0.5 transition-colors">
-                <ExternalLink size={8} /> {m.linkLabel}
-              </a>}
-            </div>
-          </div>)}
-      </div>
-    </div>;
-}
-
-function StatCard({ title, value, subValue, icon, loading, className = "" }) {
-  return <Card className={`border-border/50 bg-card/50 backdrop-blur ${className}`}>
+function StatCard({ title, value, sub, icon, valueClass = "" }) {
+  return (
+    <Card className="border-border/50 bg-card/50 backdrop-blur">
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-widest leading-tight">{title}</CardTitle>
         {icon}
       </CardHeader>
       <CardContent>
-        {loading ? <div className="h-7 w-24 bg-muted/50 animate-pulse" /> : <div className="space-y-0.5">
-            <div className="text-xl sm:text-2xl font-bold font-mono text-foreground">{value}</div>
-            {subValue && <div className="text-xs text-muted-foreground font-mono">{subValue}</div>}
-          </div>}
+        <div className="space-y-0.5">
+          <div className={`text-xl sm:text-2xl font-bold font-mono text-foreground ${valueClass}`}>{value}</div>
+          {sub && <div className="text-xs text-muted-foreground font-mono">{sub}</div>}
+        </div>
       </CardContent>
-    </Card>;
+    </Card>
+  );
 }
 
-export default Dashboard;
+function StatusRow({ label, value, ok }) {
+  return (
+    <div className="flex justify-between items-center text-sm">
+      <span className="text-muted-foreground uppercase text-xs tracking-wider">{label}</span>
+      <span className={`font-mono font-bold text-xs ${ok ? "text-green-400" : "text-red-400"}`}>{value}</span>
+    </div>
+  );
+}
+
+function TradeRow({ trade }) {
+  const isOpen = trade.status === "open";
+  const isProfit = trade.status === "profit";
+  const isLoss = trade.status === "loss";
+
+  return (
+    <div className="flex items-center justify-between p-3 border-b border-border/30 hover:bg-muted/20 transition-colors">
+      <div className="flex items-center gap-3">
+        <div className={`text-xs font-bold px-1.5 py-0.5 border ${trade.type === "BUY" ? "text-green-400 border-green-400/50 bg-green-400/10" : "text-red-400 border-red-400/50 bg-red-400/10"}`}>
+          {trade.type}
+        </div>
+        <div>
+          <div className="text-sm font-bold font-mono">{trade.symbol}</div>
+          <div className="text-xs text-muted-foreground">{new Date(trade.createdAt).toLocaleDateString()}</div>
+        </div>
+      </div>
+      <div className="text-right">
+        <div className={`text-sm font-mono font-bold ${isProfit ? "text-green-400" : isLoss ? "text-red-400" : "text-muted-foreground"}`}>
+          {isOpen ? (
+            <Badge variant="outline" className="text-[10px] uppercase text-primary border-primary/50">OPEN</Badge>
+          ) : (
+            `${isProfit ? "+" : ""}$${Number(trade.userProfit || 0).toFixed(2)}`
+          )}
+        </div>
+        <div className="text-[10px] text-muted-foreground uppercase">{trade.status}</div>
+      </div>
+    </div>
+  );
+}
