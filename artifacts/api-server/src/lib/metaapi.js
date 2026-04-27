@@ -1,31 +1,44 @@
 const METAAPI_TOKEN = process.env.METAAPI_TOKEN;
 
 let _MetaApi = null;
+let _api = null;
 
-async function getMetaApiClass() {
-  if (_MetaApi) return _MetaApi;
-  try {
-    const mod = await import("metaapi.cloud-sdk/esm-node");
-    _MetaApi = mod.default || mod.MetaApi || mod;
-    return _MetaApi;
-  } catch (err) {
-    throw new Error(`Failed to load MetaAPI SDK: ${err.message}`);
-  }
-}
-
-function getApi() {
+async function getApi() {
+  if (_api) return _api;
   if (!METAAPI_TOKEN) throw new Error("METAAPI_TOKEN is not configured");
-  return getMetaApiClass().then((MetaApi) => new MetaApi(METAAPI_TOKEN));
+  if (!_MetaApi) {
+    try {
+      const mod = await import("metaapi.cloud-sdk/esm-node");
+      _MetaApi = mod.default || mod.MetaApi || mod;
+    } catch (err) {
+      throw new Error(`Failed to load MetaAPI SDK: ${err.message}`);
+    }
+  }
+  _api = new _MetaApi(METAAPI_TOKEN);
+  return _api;
 }
 
 export async function connectAccount(mt5Login, mt5Password, mt5Server) {
   const api = await getApi();
-  const accounts = await api.metatraderAccountApi.getAccounts();
 
-  const existing = accounts.find(
-    (a) => a.login === String(mt5Login) && a.server === mt5Server
-  );
-  if (existing) return { accountId: existing.id, alreadyExisted: true };
+  // Check if account already exists in MetaAPI
+  let existing = null;
+  try {
+    const { items } = await api.metatraderAccountApi.getAccountsWithInfiniteScrollPagination({ limit: 100 });
+    existing = items?.find(
+      (a) => String(a.login) === String(mt5Login) && a.server === mt5Server
+    );
+  } catch (_) {
+    // No accounts yet — that's fine
+  }
+
+  if (existing) {
+    if (existing.state !== "DEPLOYED") {
+      await existing.deploy();
+      await existing.waitConnected({ timeoutInSeconds: 120 });
+    }
+    return { accountId: existing.id, alreadyExisted: true };
+  }
 
   const account = await api.metatraderAccountApi.createAccount({
     name: `GhostAgent-${mt5Login}`,
@@ -38,7 +51,7 @@ export async function connectAccount(mt5Login, mt5Password, mt5Server) {
   });
 
   await account.deploy();
-  await account.waitConnected();
+  await account.waitConnected({ timeoutInSeconds: 120 });
   return { accountId: account.id, alreadyExisted: false };
 }
 
@@ -47,7 +60,7 @@ export async function getAccountInfo(mt5AccountId) {
   const account = await api.metatraderAccountApi.getAccount(mt5AccountId);
   const connection = account.getRPCConnection();
   await connection.connect();
-  await connection.waitSynchronized();
+  await connection.waitSynchronized({ timeoutInSeconds: 60 });
   const info = await connection.getAccountInformation();
   await connection.close();
   return info;
@@ -58,7 +71,7 @@ export async function getMarketData(mt5AccountId, symbol) {
   const account = await api.metatraderAccountApi.getAccount(mt5AccountId);
   const connection = account.getRPCConnection();
   await connection.connect();
-  await connection.waitSynchronized();
+  await connection.waitSynchronized({ timeoutInSeconds: 60 });
 
   try {
     const price = await connection.getSymbolPrice(symbol);
@@ -85,7 +98,7 @@ export async function placeTrade(mt5AccountId, { symbol, type, volume, stopLoss,
   const account = await api.metatraderAccountApi.getAccount(mt5AccountId);
   const connection = account.getRPCConnection();
   await connection.connect();
-  await connection.waitSynchronized();
+  await connection.waitSynchronized({ timeoutInSeconds: 60 });
 
   try {
     let result;
@@ -113,7 +126,7 @@ export async function getOpenTrades(mt5AccountId) {
   const account = await api.metatraderAccountApi.getAccount(mt5AccountId);
   const connection = account.getRPCConnection();
   await connection.connect();
-  await connection.waitSynchronized();
+  await connection.waitSynchronized({ timeoutInSeconds: 60 });
   const positions = await connection.getPositions();
   await connection.close();
   return positions;
@@ -124,7 +137,7 @@ export async function closePosition(mt5AccountId, positionId) {
   const account = await api.metatraderAccountApi.getAccount(mt5AccountId);
   const connection = account.getRPCConnection();
   await connection.connect();
-  await connection.waitSynchronized();
+  await connection.waitSynchronized({ timeoutInSeconds: 60 });
   const result = await connection.closePosition(positionId, { comment: "GhostAgent-close" });
   await connection.close();
   return result;
