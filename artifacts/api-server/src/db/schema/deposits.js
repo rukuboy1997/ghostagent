@@ -1,7 +1,7 @@
 import { pgTable, serial, integer, varchar, decimal, timestamp, text } from "drizzle-orm/pg-core";
 import { users } from "./users.js";
 
-export const deposits = pgTable("deposits", {
+export const deposits = pgTable("_trading_deposits", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id),
   amount: decimal("amount", { precision: 18, scale: 8 }).notNull(),

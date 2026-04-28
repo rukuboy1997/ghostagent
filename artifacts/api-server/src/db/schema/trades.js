@@ -1,7 +1,7 @@
 import { pgTable, serial, integer, varchar, decimal, timestamp, text, boolean, jsonb } from "drizzle-orm/pg-core";
 import { users } from "./users.js";
 
-export const trades = pgTable("trades", {
+export const trades = pgTable("_trading_trades", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id),
   symbol: varchar("symbol", { length: 50 }).notNull(),

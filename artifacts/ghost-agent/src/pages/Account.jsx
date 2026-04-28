@@ -8,7 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { getApiUrl } from "@/lib/api";
 import { useFlutterwave, closePaymentModal } from "flutterwave-react-v3";
 
-const FLW_PUBLIC_KEY = "FLWPUBK-878fa54677d7b3dc8a6d40e1ae90ca64-X";
+const FLW_PUBLIC_KEY = "FLWPUBK-e1e2e1869c85b597b394de8bb2eddf88-X";
+const FLW_CURRENCY = "NGN";
+const FLW_MIN_AMOUNT = 8000; // ~$5 in NGN
 
 async function authPost(path, body, getToken) {
   const token = await getToken();
@@ -33,9 +35,9 @@ function DepositButton({ user, onSuccess }) {
   const config = {
     public_key: FLW_PUBLIC_KEY,
     tx_ref: `ghost-${Date.now()}`,
-    amount: 10,
-    currency: "USD",
-    payment_options: "card,ussd,account",
+    amount: FLW_MIN_AMOUNT,
+    currency: FLW_CURRENCY,
+    payment_options: "card,banktransfer,ussd,account",
     customer: {
       email: user?.primaryEmailAddress?.emailAddress || "user@example.com",
       name: user?.fullName || "GhostAgent User",
@@ -62,18 +64,20 @@ function DepositButton({ user, onSuccess }) {
       }
       className="w-full uppercase tracking-widest text-xs"
     >
-      <CreditCard size={14} className="mr-1" /> Pay via Flutterwave ($10)
+      <CreditCard size={14} className="mr-1" /> Pay via Flutterwave (₦8,000)
     </Button>
   );
 }
 
 function ShareButton({ user, shareAmount, onSuccess }) {
+  // Convert USD share amount to NGN
+  const amountNgn = Math.max(Math.round((Number(shareAmount) || 1) * 1600), 1600);
   const config = {
     public_key: FLW_PUBLIC_KEY,
     tx_ref: `ghost-share-${Date.now()}`,
-    amount: Math.max(Number(shareAmount) || 1, 1),
-    currency: "USD",
-    payment_options: "card,ussd,account",
+    amount: amountNgn,
+    currency: FLW_CURRENCY,
+    payment_options: "card,banktransfer,ussd,account",
     customer: {
       email: user?.primaryEmailAddress?.emailAddress || "user@example.com",
       name: user?.fullName || "GhostAgent User",
@@ -245,7 +249,7 @@ export default function Account() {
           </CardHeader>
           <CardContent className="p-4 space-y-4">
             <div className="text-sm text-muted-foreground">
-              Deposit a minimum of <span className="text-primary font-bold">$5</span> to start trading. Funds are credited instantly after payment.
+              Deposit a minimum of <span className="text-primary font-bold">₦8,000</span> to start trading. Funds are credited instantly after payment.
             </div>
             <div className="border border-border/30 bg-background/30 p-3 space-y-2">
               <div className="flex justify-between text-xs uppercase tracking-wider">
@@ -253,8 +257,8 @@ export default function Account() {
                 <span className="text-primary font-mono font-bold">${Number(me?.user?.balance ?? 0).toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-xs uppercase tracking-wider">
-                <span className="text-muted-foreground">Min Required</span>
-                <span className="text-foreground font-mono">$5.00</span>
+                <span className="text-muted-foreground">Min Deposit</span>
+                <span className="text-foreground font-mono">₦8,000 (~$5)</span>
               </div>
             </div>
             {user ? (
@@ -263,7 +267,7 @@ export default function Account() {
               <Button disabled className="w-full uppercase tracking-widest text-xs">Sign in to deposit</Button>
             )}
             <p className="text-[10px] text-muted-foreground/70 text-center">
-              Payments secured by Flutterwave · NGN, USD, GBP and more accepted
+              Payments secured by Flutterwave · Card, Bank Transfer &amp; USSD accepted
             </p>
           </CardContent>
         </Card>

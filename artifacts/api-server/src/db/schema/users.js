@@ -1,6 +1,6 @@
 import { pgTable, serial, varchar, decimal, boolean, timestamp, text, integer } from "drizzle-orm/pg-core";
 
-export const users = pgTable("users", {
+export const users = pgTable("_trading_users", {
   id: serial("id").primaryKey(),
   clerkId: varchar("clerk_id", { length: 255 }).unique().notNull(),
   email: varchar("email", { length: 255 }).notNull(),
