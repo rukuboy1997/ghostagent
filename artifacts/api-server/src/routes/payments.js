@@ -5,7 +5,7 @@ import { db, users, deposits } from "../db/index.js";
 
 const router = Router();
 
-const MIN_DEPOSIT_USD = 5;
+const MIN_DEPOSIT_USD = 10;
 const GHOST_SHARE_PERCENT = 30;
 
 router.post("/verify-deposit", requireAuth(), async (req, res) => {
