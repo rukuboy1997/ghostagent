@@ -1,11 +1,11 @@
 import { Router } from "express";
-import { requireAuth, getAuth } from "@clerk/express";
+import { requireUser, getAuth } from "../middlewares/authMiddleware.js";
 import { eq } from "drizzle-orm";
 import { db, users, deposits } from "../db/index.js";
 
 const router = Router();
 
-router.post("/verify-deposit", requireAuth(), async (req, res) => {
+router.post("/verify-deposit", requireUser(), async (req, res) => {
   try {
     const { userId } = getAuth(req);
     const { txRef, txId, amount, currency, flutterwaveStatus } = req.body;
@@ -46,7 +46,7 @@ router.post("/verify-deposit", requireAuth(), async (req, res) => {
   }
 });
 
-router.post("/verify-share", requireAuth(), async (req, res) => {
+router.post("/verify-share", requireUser(), async (req, res) => {
   try {
     const { userId } = getAuth(req);
     const { txRef, txId, amount, currency, flutterwaveStatus } = req.body;
@@ -87,7 +87,7 @@ router.post("/verify-share", requireAuth(), async (req, res) => {
   }
 });
 
-router.get("/history", requireAuth(), async (req, res) => {
+router.get("/history", requireUser(), async (req, res) => {
   try {
     const { userId } = getAuth(req);
     const [user] = await db.select().from(users).where(eq(users.clerkId, userId));
