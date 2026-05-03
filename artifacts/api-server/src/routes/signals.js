@@ -3,37 +3,11 @@ import { requireUser, getAuth } from "../middlewares/authMiddleware.js";
 import { eq, desc } from "drizzle-orm";
 import { db, users, trades } from "../db/index.js";
 import { analyzeMarket } from "../lib/cloudflare-ai.js";
-import { getMarketDataWithIndicators as fmpGetMarket, isFmpEnabled } from "../lib/fmp.js";
-import { getMarketDataWithIndicators as avGetMarket, isAlphaVantageEnabled } from "../lib/alphavantage.js";
+import { getMarketDataWithIndicators, isTwelveDataEnabled } from "../lib/twelvedata.js";
 
 const router = Router();
 
 const TP_SIGNALS_BEFORE_SHARE = 3;
-
-function buildFallbackMarketData(symbol) {
-  const s = symbol.toUpperCase();
-  const isJPY = s.includes("JPY");
-  const isXAU = s.includes("XAU");
-  const isXAG = s.includes("XAG");
-  const isBTC = s.includes("BTC");
-  const isETH = s.includes("ETH");
-  const isOIL = s === "USOIL" || s === "WTI";
-
-  let base = isJPY ? 155.2 : isXAU ? 3313 : isXAG ? 32.5 : isBTC ? 78630 : isETH ? 3100 : isOIL ? 82 : 1.085;
-  const spread = isXAU ? 0.5 : isJPY ? 0.015 : isBTC ? 50 : isETH ? 5 : 0.00015;
-
-  return {
-    symbol,
-    price: base,
-    bid: base - spread,
-    ask: base + spread,
-    change: "0",
-    candles: [],
-    rsi: null,
-    macd: null,
-    source: "fallback",
-  };
-}
 
 router.post("/analyze", requireUser(), async (req, res) => {
   try {
@@ -41,6 +15,10 @@ router.post("/analyze", requireUser(), async (req, res) => {
     const { symbol, accountBalance } = req.body;
 
     if (!symbol) return res.status(400).json({ error: "symbol is required" });
+
+    if (!isTwelveDataEnabled()) {
+      return res.status(503).json({ error: "Market data service is not configured. Please contact support." });
+    }
 
     const [user] = await db.select().from(users).where(eq(users.clerkId, userId));
     if (!user) return res.status(404).json({ error: "User not found. Please sign in again." });
@@ -64,24 +42,25 @@ router.post("/analyze", requireUser(), async (req, res) => {
 
     let marketData;
     try {
-      if (isFmpEnabled()) {
-        marketData = await fmpGetMarket(symbol);
-      } else if (isAlphaVantageEnabled()) {
-        marketData = await avGetMarket(symbol);
-      } else {
-        marketData = buildFallbackMarketData(symbol);
-      }
+      marketData = await getMarketDataWithIndicators(symbol);
     } catch (e) {
-      req.log.warn({ err: e.message }, "Market data fetch failed, using fallback");
-      try {
-        if (isAlphaVantageEnabled()) marketData = await avGetMarket(symbol);
-        else marketData = buildFallbackMarketData(symbol);
-      } catch {
-        marketData = buildFallbackMarketData(symbol);
-      }
+      req.log.error({ err: e.message }, "FMP market data fetch failed");
+      return res.status(503).json({
+        error: "Unable to fetch live market data right now. Please try again in a moment.",
+        detail: e.message,
+      });
     }
 
-    const analysis = await analyzeMarket({ symbol, marketData, accountBalance: tradingBal });
+    let analysis;
+    try {
+      analysis = await analyzeMarket({ symbol, marketData, accountBalance: tradingBal });
+    } catch (e) {
+      req.log.error({ err: e.message }, "AI analysis failed");
+      return res.status(503).json({
+        error: "AI analysis is unavailable right now. Please try again in a moment.",
+        detail: e.message,
+      });
+    }
 
     if (accountBalance && parseFloat(accountBalance) !== parseFloat(user.tradingBalance || 0)) {
       await db.update(users).set({
@@ -93,7 +72,7 @@ router.post("/analyze", requireUser(), async (req, res) => {
     res.json({ analysis, marketData });
   } catch (err) {
     req.log.error({ err }, "Signal analysis failed");
-    res.status(500).json({ error: "Analysis failed: " + (err?.message || "unknown error") });
+    res.status(500).json({ error: "Signal analysis failed: " + (err?.message || "unknown error") });
   }
 });
 
@@ -266,20 +245,6 @@ router.get("/status", requireUser(), async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "Signal status failed");
     res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-router.get("/market/:symbol", requireUser(), async (req, res) => {
-  try {
-    const { symbol } = req.params;
-    if (!isAlphaVantageEnabled()) {
-      return res.json({ symbol, price: 0, bid: 0, ask: 0, change: "0", source: "unavailable", note: "Alpha Vantage API key not configured" });
-    }
-    const data = await getMarketDataWithIndicators(symbol);
-    res.json(data);
-  } catch (err) {
-    req.log.error({ err }, "Market data failed");
-    res.status(500).json({ error: err?.message || "Failed to get market data" });
   }
 });
 
