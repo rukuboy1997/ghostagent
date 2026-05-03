@@ -1,11 +1,11 @@
 import { Router } from "express";
-import { requireAuth, getAuth } from "@clerk/express";
+import { requireUser, getAuth } from "../middlewares/authMiddleware.js";
 import { eq } from "drizzle-orm";
 import { db, users } from "../db/index.js";
 
 const router = Router();
 
-router.post("/sync", requireAuth(), async (req, res) => {
+router.post("/sync", requireUser(), async (req, res) => {
   try {
     const { userId } = getAuth(req);
     const { email, name } = req.body;
@@ -19,6 +19,8 @@ router.post("/sync", requireAuth(), async (req, res) => {
       clerkId: userId,
       email: email || "",
       name: name || "",
+      balance: "0",
+      tradingBalance: "50",
     }).returning();
 
     res.status(201).json({ user, created: true });
@@ -28,7 +30,7 @@ router.post("/sync", requireAuth(), async (req, res) => {
   }
 });
 
-router.get("/me", requireAuth(), async (req, res) => {
+router.get("/me", requireUser(), async (req, res) => {
   try {
     const { userId } = getAuth(req);
     const [user] = await db.select().from(users).where(eq(users.clerkId, userId));
@@ -40,7 +42,7 @@ router.get("/me", requireAuth(), async (req, res) => {
   }
 });
 
-router.patch("/me", requireAuth(), async (req, res) => {
+router.patch("/me", requireUser(), async (req, res) => {
   try {
     const { userId } = getAuth(req);
     const { name, currency } = req.body;
@@ -48,8 +50,7 @@ router.patch("/me", requireAuth(), async (req, res) => {
       .set({ name, currency, updatedAt: new Date() })
       .where(eq(users.clerkId, userId))
       .returning();
-    const { mt5Password, ...safeUser } = user;
-    res.json({ user: safeUser });
+    res.json({ user });
   } catch (err) {
     req.log.error({ err }, "Update me failed");
     res.status(500).json({ error: "Internal server error" });

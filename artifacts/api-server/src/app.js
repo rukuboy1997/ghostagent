@@ -33,11 +33,7 @@ app.get("/api/healthz", (_req, res) => res.json({ status: "ok" }));
 
 const clerkPK = process.env.CLERK_PUBLISHABLE_KEY || process.env.VITE_CLERK_PUBLISHABLE_KEY;
 const clerkSK = process.env.CLERK_SECRET_KEY;
-if (clerkSK) {
-  app.use(clerkMiddleware({ publishableKey: clerkPK, secretKey: clerkSK }));
-} else {
-  app.use(clerkMiddleware());
-}
+app.use(clerkMiddleware({ publishableKey: clerkPK, ...(clerkSK ? { secretKey: clerkSK } : {}) }));
 
 app.use("/api", router);
 

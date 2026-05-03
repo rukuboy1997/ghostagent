@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireAuth, getAuth } from "@clerk/express";
+import { requireUser, getAuth } from "../middlewares/authMiddleware.js";
 import { eq, desc } from "drizzle-orm";
 import { db, users, trades } from "../db/index.js";
 import { analyzeMarket } from "../lib/cloudflare-ai.js";
@@ -34,7 +34,7 @@ function buildFallbackMarketData(symbol) {
   };
 }
 
-router.post("/analyze", requireAuth(), async (req, res) => {
+router.post("/analyze", requireUser(), async (req, res) => {
   try {
     const { userId } = getAuth(req);
     const { symbol, accountBalance } = req.body;
@@ -42,7 +42,7 @@ router.post("/analyze", requireAuth(), async (req, res) => {
     if (!symbol) return res.status(400).json({ error: "symbol is required" });
 
     const [user] = await db.select().from(users).where(eq(users.clerkId, userId));
-    if (!user) return res.status(404).json({ error: "User not found" });
+    if (!user) return res.status(404).json({ error: "User not found. Please sign in again." });
 
     const shareRequired = user.tpSignalsSinceLastShare >= TP_SIGNALS_BEFORE_SHARE;
     if (shareRequired) {
@@ -55,7 +55,7 @@ router.post("/analyze", requireAuth(), async (req, res) => {
 
     const tradingBal = accountBalance
       ? parseFloat(accountBalance)
-      : parseFloat(user.tradingBalance || 1000);
+      : parseFloat(user.tradingBalance || 50);
 
     if (tradingBal < 10) {
       return res.status(400).json({ error: "Account balance must be at least $10 for risk management calculation." });
@@ -89,7 +89,7 @@ router.post("/analyze", requireAuth(), async (req, res) => {
   }
 });
 
-router.post("/:signalId/outcome", requireAuth(), async (req, res) => {
+router.post("/:signalId/outcome", requireUser(), async (req, res) => {
   try {
     const { userId } = getAuth(req);
     const signalId = parseInt(req.params.signalId);
@@ -143,7 +143,7 @@ router.post("/:signalId/outcome", requireAuth(), async (req, res) => {
   }
 });
 
-router.post("/:signalId/journal", requireAuth(), async (req, res) => {
+router.post("/:signalId/journal", requireUser(), async (req, res) => {
   try {
     const { userId } = getAuth(req);
     const signalId = parseInt(req.params.signalId);
@@ -171,7 +171,7 @@ router.post("/:signalId/journal", requireAuth(), async (req, res) => {
   }
 });
 
-router.post("/save", requireAuth(), async (req, res) => {
+router.post("/save", requireUser(), async (req, res) => {
   try {
     const { userId } = getAuth(req);
     const { symbol, analysis } = req.body;
@@ -202,7 +202,7 @@ router.post("/save", requireAuth(), async (req, res) => {
       riskRewardRatio: String(analysis.riskRewardRatio || "N/A"),
       recommendedLotSize: String(analysis.recommendedLotSize || 0.01),
       riskPercent: String(analysis.riskPercent || 1),
-      accountBalanceAtSignal: String(analysis.accountBalance || user.tradingBalance || 1000),
+      accountBalanceAtSignal: String(analysis.accountBalance || user.tradingBalance || 50),
       signalStatus: "active",
       aiReasoning: analysis.reasoning,
       aiConfidence: String(analysis.confidence),
@@ -218,7 +218,7 @@ router.post("/save", requireAuth(), async (req, res) => {
   }
 });
 
-router.get("/history", requireAuth(), async (req, res) => {
+router.get("/history", requireUser(), async (req, res) => {
   try {
     const { userId } = getAuth(req);
     const [user] = await db.select().from(users).where(eq(users.clerkId, userId));
@@ -236,7 +236,7 @@ router.get("/history", requireAuth(), async (req, res) => {
   }
 });
 
-router.get("/status", requireAuth(), async (req, res) => {
+router.get("/status", requireUser(), async (req, res) => {
   try {
     const { userId } = getAuth(req);
     const [user] = await db.select().from(users).where(eq(users.clerkId, userId));
@@ -248,7 +248,7 @@ router.get("/status", requireAuth(), async (req, res) => {
     res.json({
       balance: user.balance,
       currency: user.currency,
-      tradingBalance: user.tradingBalance || 1000,
+      tradingBalance: user.tradingBalance || 50,
       totalTrades: user.totalTrades,
       tpSignalsSinceLastShare: user.tpSignalsSinceLastShare || 0,
       tpUntilShare,
@@ -261,7 +261,7 @@ router.get("/status", requireAuth(), async (req, res) => {
   }
 });
 
-router.get("/market/:symbol", requireAuth(), async (req, res) => {
+router.get("/market/:symbol", requireUser(), async (req, res) => {
   try {
     const { symbol } = req.params;
     if (!isAlphaVantageEnabled()) {
@@ -275,7 +275,7 @@ router.get("/market/:symbol", requireAuth(), async (req, res) => {
   }
 });
 
-router.post("/set-balance", requireAuth(), async (req, res) => {
+router.post("/set-balance", requireUser(), async (req, res) => {
   try {
     const { userId } = getAuth(req);
     const { tradingBalance } = req.body;
