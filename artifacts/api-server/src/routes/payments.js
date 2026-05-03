@@ -5,9 +5,6 @@ import { db, users, deposits } from "../db/index.js";
 
 const router = Router();
 
-const MIN_DEPOSIT_USD = 10;
-const GHOST_SHARE_PERCENT = 30;
-
 router.post("/verify-deposit", requireAuth(), async (req, res) => {
   try {
     const { userId } = getAuth(req);
@@ -65,7 +62,7 @@ router.post("/verify-share", requireAuth(), async (req, res) => {
 
     const amountUsd = currency === "USD" ? amount : currency === "NGN" ? amount / 1600 : amount;
 
-    const [deposit] = await db.insert(deposits).values({
+    await db.insert(deposits).values({
       userId: user.id,
       amount: String(amount),
       currency,
@@ -74,15 +71,16 @@ router.post("/verify-share", requireAuth(), async (req, res) => {
       status: "completed",
       flutterwaveTxRef: txRef,
       flutterwaveTxId: String(txId),
-      note: "GhostAgent 30% share payment",
-    }).returning();
+      note: "GhostAgent share payment",
+    });
 
     await db.update(users).set({
+      tpSignalsSinceLastShare: 0,
       tradesSinceLastShare: 0,
       updatedAt: new Date(),
     }).where(eq(users.clerkId, userId));
 
-    res.json({ success: true, deposit, message: "Share paid. You can now continue trading." });
+    res.json({ success: true, message: "Ghost share paid. You can now receive more signals." });
   } catch (err) {
     req.log.error({ err }, "Share verification failed");
     res.status(500).json({ error: "Failed to verify share payment" });

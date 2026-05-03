@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth, useUser } from "@clerk/react";
-import { DollarSign, CreditCard, History, AlertCircle, CheckCircle, RefreshCw, Ghost } from "lucide-react";
+import { DollarSign, CreditCard, History, AlertCircle, CheckCircle, RefreshCw, Ghost, Radio } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -44,7 +44,7 @@ function DepositButton({ user, onSuccess }) {
     },
     customizations: {
       title: "GhostAgent Deposit",
-      description: "Fund your GhostAgent trading account",
+      description: "Fund your GhostAgent account",
       logo: "",
     },
   };
@@ -69,11 +69,11 @@ function DepositButton({ user, onSuccess }) {
   );
 }
 
-function ShareButton({ user, shareAmount, onSuccess }) {
+function ShareButton({ user, onSuccess }) {
   const config = {
     public_key: FLW_PUBLIC_KEY,
     tx_ref: `ghost-share-${Date.now()}`,
-    amount: Math.max(Number(shareAmount) || 1, 1),
+    amount: 10,
     currency: FLW_CURRENCY,
     payment_options: "card,banktransfer,ussd,account",
     customer: {
@@ -82,7 +82,7 @@ function ShareButton({ user, shareAmount, onSuccess }) {
     },
     customizations: {
       title: "GhostAgent Share Payment",
-      description: "Pay GhostAgent's 30% profit share to continue trading",
+      description: "Send GhostAgent's share after 3 TP signals",
       logo: "",
     },
   };
@@ -103,7 +103,7 @@ function ShareButton({ user, shareAmount, onSuccess }) {
         })
       }
     >
-      <Ghost size={14} className="mr-1" /> Pay GhostAgent Share
+      <Ghost size={14} className="mr-1" /> Send GhostAgent Share
     </Button>
   );
 }
@@ -121,8 +121,8 @@ export default function Account() {
   });
 
   const { data: status } = useQuery({
-    queryKey: ["trading-status"],
-    queryFn: () => authGet("/api/trading/status", getToken),
+    queryKey: ["signal-status"],
+    queryFn: () => authGet("/api/signals/status", getToken),
     refetchInterval: 30000,
   });
 
@@ -140,12 +140,12 @@ export default function Account() {
       const isShare = vars.type === "share";
       setPaymentMsg(
         isShare
-          ? "GhostAgent share paid! You can now continue trading."
+          ? "GhostAgent share sent! You can now receive more signals."
           : `Deposit confirmed! +$${Number(data.amountUsd).toFixed(2)} added to your balance.`
       );
       setPaymentError(null);
       qc.invalidateQueries({ queryKey: ["me"] });
-      qc.invalidateQueries({ queryKey: ["trading-status"] });
+      qc.invalidateQueries({ queryKey: ["signal-status"] });
       qc.invalidateQueries({ queryKey: ["payment-history"] });
     },
     onError: (err) => {
@@ -166,10 +166,6 @@ export default function Account() {
     });
   };
 
-  const ghostShareOwed = status?.shareRequired
-    ? Number(me?.user?.totalProfit ?? 0) * 0.30
-    : 0;
-
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="border-b border-border/50 pb-4">
@@ -177,7 +173,7 @@ export default function Account() {
           <DollarSign size={24} /> Account
         </h2>
         <p className="text-muted-foreground text-sm uppercase tracking-wider mt-1">
-          Manage your balance and payments
+          Manage your balance and Ghost share
         </p>
       </div>
 
@@ -195,25 +191,27 @@ export default function Account() {
         </Card>
         <Card className="border-border/50 bg-card/50">
           <CardHeader className="pb-2">
-            <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground">Total Profit</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className={`text-3xl font-bold font-mono ${Number(me?.user?.totalProfit) >= 0 ? "text-green-400" : "text-red-400"}`}>
-              ${Number(me?.user?.totalProfit ?? 0).toFixed(2)}
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">Your 70% share</div>
-          </CardContent>
-        </Card>
-        <Card className="border-border/50 bg-card/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground">Total Trades</CardTitle>
+            <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground">Total Signals</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold font-mono text-foreground">
               {status?.totalTrades ?? 0}
             </div>
+            <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+              <Radio size={10} /> AI-generated signals
+            </div>
+          </CardContent>
+        </Card>
+        <Card className={`border-border/50 bg-card/50 ${status?.shareRequired ? "border-red-500/50 bg-red-500/5" : ""}`}>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground">TP Progress</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className={`text-3xl font-bold font-mono ${status?.shareRequired ? "text-red-400" : "text-foreground"}`}>
+              {status?.tpSignalsSinceLastShare ?? 0}/3
+            </div>
             <div className="text-xs text-muted-foreground mt-1">
-              {status?.tradesUntilShare ?? 3} until next share
+              {status?.shareRequired ? "Share required!" : `${status?.tpUntilShare ?? 3} TP hits until share`}
             </div>
           </CardContent>
         </Card>
@@ -247,7 +245,7 @@ export default function Account() {
           </CardHeader>
           <CardContent className="p-4 space-y-4">
             <div className="text-sm text-muted-foreground">
-              Deposit a minimum of <span className="text-primary font-bold">$10</span> to start trading. Funds are credited instantly after payment.
+              Deposit a minimum of <span className="text-primary font-bold">$10</span> to your GhostAgent account. Funds are credited instantly.
             </div>
             <div className="border border-border/30 bg-background/30 p-3 space-y-2">
               <div className="flex justify-between text-xs uppercase tracking-wider">
@@ -270,36 +268,49 @@ export default function Account() {
           </CardContent>
         </Card>
 
-        {status?.shareRequired && (
-          <Card className="border-red-500/30 bg-red-500/5 backdrop-blur">
-            <CardHeader className="border-b border-red-500/20 pb-4">
-              <CardTitle className="uppercase tracking-widest text-sm flex items-center gap-2 text-red-400">
-                <Ghost size={16} /> GhostAgent Share Due
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-4 space-y-4">
-              <div className="text-sm text-red-300">
-                You've completed <strong>{status.tradesSinceLastShare}</strong> trades. GhostAgent's 30% share is now due.
-              </div>
-              <div className="border border-red-500/20 bg-background/30 p-3 space-y-2">
-                <div className="flex justify-between text-xs uppercase tracking-wider">
-                  <span className="text-muted-foreground">Your Total Profit</span>
-                  <span className="text-green-400 font-mono">${Number(me?.user?.totalProfit ?? 0).toFixed(2)}</span>
+        <Card className={`backdrop-blur ${status?.shareRequired ? "border-red-500/30 bg-red-500/5" : "border-border/50 bg-card/50"}`}>
+          <CardHeader className={`border-b pb-4 ${status?.shareRequired ? "border-red-500/20" : "border-border/50"}`}>
+            <CardTitle className={`uppercase tracking-widest text-sm flex items-center gap-2 ${status?.shareRequired ? "text-red-400" : "text-primary"}`}>
+              <Ghost size={16} /> GhostAgent Share
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 space-y-4">
+            {status?.shareRequired ? (
+              <>
+                <div className="text-sm text-red-300">
+                  You've had <strong>3 signals reach Take Profit!</strong> Send GhostAgent's share to unlock more signals.
                 </div>
-                <div className="flex justify-between text-xs uppercase tracking-wider">
-                  <span className="text-muted-foreground">GhostAgent 30%</span>
-                  <span className="text-red-400 font-mono font-bold">${Math.max(ghostShareOwed, 1).toFixed(2)}</span>
+                <div className="border border-red-500/20 bg-background/30 p-3 space-y-2 text-xs">
+                  <p className="text-muted-foreground leading-relaxed">
+                    The Ghost Share is sent after every 3 TP signals as agreed. The amount is based on your trading results — send what's fair based on your profits from those signals.
+                  </p>
                 </div>
-              </div>
-              {user ? (
-                <ShareButton user={user} shareAmount={Math.max(ghostShareOwed, 1)} onSuccess={(r) => handlePaymentSuccess(r, "share")} />
-              ) : null}
-              <p className="text-[10px] text-muted-foreground/70">
-                Pay GhostAgent's 30% to unlock your next 3 trades.
-              </p>
-            </CardContent>
-          </Card>
-        )}
+                {user ? (
+                  <ShareButton user={user} onSuccess={(r) => handlePaymentSuccess(r, "share")} />
+                ) : null}
+              </>
+            ) : (
+              <>
+                <div className="text-sm text-muted-foreground">
+                  After every 3 signals that reach Take Profit, send GhostAgent's share to continue receiving signals.
+                </div>
+                <div className="border border-border/30 bg-background/30 p-3 space-y-2">
+                  <div className="flex justify-between text-xs uppercase tracking-wider">
+                    <span className="text-muted-foreground">TP Signals So Far</span>
+                    <span className="text-primary font-mono font-bold">{status?.tpSignalsSinceLastShare ?? 0}/3</span>
+                  </div>
+                  <div className="flex justify-between text-xs uppercase tracking-wider">
+                    <span className="text-muted-foreground">Until Share Required</span>
+                    <span className="text-foreground font-mono">{status?.tpUntilShare ?? 3} more TP hits</span>
+                  </div>
+                </div>
+                <div className="text-[10px] text-muted-foreground/70">
+                  Keep trading — share is only required after 3 signals hit TP.
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       <Card className="border-border/50 bg-card/50 backdrop-blur">
@@ -330,8 +341,8 @@ export default function Account() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className={`text-sm font-mono font-bold ${item.type === "ghost_share" ? "text-red-400" : "text-green-400"}`}>
-                      {item.type === "ghost_share" ? "-" : "+"}${Number(item.amountUsd || item.amount).toFixed(2)}
+                    <div className={`text-sm font-mono font-bold ${item.type === "ghost_share" ? "text-primary" : "text-green-400"}`}>
+                      {item.type === "ghost_share" ? "" : "+"}${Number(item.amountUsd || item.amount).toFixed(2)}
                     </div>
                     <Badge
                       variant="outline"

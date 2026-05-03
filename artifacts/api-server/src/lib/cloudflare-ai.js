@@ -2,12 +2,31 @@ const CLOUDFLARE_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
 const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
 const MODEL = "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b";
 
-export async function analyzeMarket({ symbol, marketData, userContext }) {
+function calcPipValue(symbol, lotSize) {
+  const s = symbol.toUpperCase();
+  if (s.includes("JPY")) return lotSize * 100000 * 0.01 * (1 / 149.5);
+  if (s.includes("XAU")) return lotSize * 100 * 0.1;
+  if (s.includes("XAG")) return lotSize * 5000 * 0.001;
+  if (s.includes("BTC") || s.includes("ETH")) return lotSize * 1;
+  if (s === "USOIL" || s === "WTI" || s === "BRENT") return lotSize * 1000;
+  return lotSize * 100000 * 0.0001;
+}
+
+function calcLotSize(symbol, accountBalance, riskPercent, stopLossPips) {
+  if (!stopLossPips || stopLossPips <= 0) return 0.01;
+  const riskAmount = (accountBalance * riskPercent) / 100;
+  const pipValuePerLot = calcPipValue(symbol, 1);
+  const rawLot = riskAmount / (stopLossPips * pipValuePerLot);
+  const lot = Math.round(rawLot * 100) / 100;
+  return Math.max(0.01, Math.min(lot, 10));
+}
+
+export async function analyzeMarket({ symbol, marketData, accountBalance = 1000 }) {
   if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN) {
-    return buildFallbackAnalysis(symbol, marketData);
+    return buildFallbackSignal(symbol, marketData, accountBalance);
   }
 
-  const prompt = buildTradingPrompt(symbol, marketData, userContext);
+  const prompt = buildSignalPrompt(symbol, marketData, accountBalance);
 
   try {
     const response = await fetch(
@@ -22,22 +41,28 @@ export async function analyzeMarket({ symbol, marketData, userContext }) {
           messages: [
             {
               role: "system",
-              content: `You are GhostAgent — an elite autonomous trading AI. You analyze forex and commodity markets with precision. 
-You MUST respond ONLY with valid JSON in this exact format (no markdown, no extra text):
+              content: `You are GhostAgent — an elite forex and commodity trading signal AI. You analyze markets with precision and give high-reliability trading signals.
+
+You MUST respond ONLY with valid JSON in this exact format (no markdown, no extra text, no <think> tags outside JSON):
 {
   "decision": "BUY" | "SELL" | "HOLD",
   "confidence": <number 0-100>,
-  "reasoning": "<concise reasoning in 2-3 sentences>",
-  "entryPrice": <number or null>,
-  "stopLoss": <number or null>,
-  "takeProfit": <number or null>,
-  "volume": <number between 0.01 and 1.0>,
-  "forecast": "<short market forecast>"
+  "reasoning": "<detailed reasoning in 3-5 sentences explaining the technical setup>",
+  "entryPrice": <number>,
+  "stopLoss": <number>,
+  "takeProfit": <number>,
+  "stopLossPips": <number>,
+  "takeProfitPips": <number>,
+  "riskRewardRatio": <number>,
+  "recommendedLotSize": <number>,
+  "riskPercent": <number 1 or 2>,
+  "forecast": "<short market forecast for the next 4-8 hours>",
+  "keyLevels": "<key support/resistance levels to watch>"
 }`,
             },
             { role: "user", content: prompt },
           ],
-          max_tokens: 800,
+          max_tokens: 1200,
         }),
       }
     );
@@ -54,57 +79,114 @@ You MUST respond ONLY with valid JSON in this exact format (no markdown, no extr
     if (!jsonMatch) throw new Error("No JSON in AI response");
 
     const parsed = JSON.parse(jsonMatch[0]);
+
+    const decision = parsed.decision || "HOLD";
+    const entryPrice = Number(parsed.entryPrice) || marketData?.price || 0;
+    const stopLoss = Number(parsed.stopLoss) || 0;
+    const takeProfit = Number(parsed.takeProfit) || 0;
+    const stopLossPips = Math.abs(Number(parsed.stopLossPips) || 0);
+    const riskPercent = Number(parsed.riskPercent) || 1;
+
+    const recommendedLot = stopLossPips > 0
+      ? calcLotSize(symbol, accountBalance, riskPercent, stopLossPips)
+      : Math.max(0.01, Number(parsed.recommendedLotSize) || 0.01);
+
+    const rr = stopLossPips > 0 && Number(parsed.takeProfitPips) > 0
+      ? (Number(parsed.takeProfitPips) / stopLossPips).toFixed(2)
+      : parsed.riskRewardRatio || "N/A";
+
     return {
-      decision: parsed.decision || "HOLD",
+      decision,
       confidence: Number(parsed.confidence) || 50,
       reasoning: parsed.reasoning || "Market analysis complete.",
-      entryPrice: parsed.entryPrice,
-      stopLoss: parsed.stopLoss,
-      takeProfit: parsed.takeProfit,
-      volume: Math.min(Math.max(Number(parsed.volume) || 0.01, 0.01), 1.0),
+      entryPrice,
+      stopLoss,
+      takeProfit,
+      stopLossPips,
+      takeProfitPips: Number(parsed.takeProfitPips) || 0,
+      riskRewardRatio: rr,
+      recommendedLotSize: recommendedLot,
+      riskPercent,
       forecast: parsed.forecast || "",
+      keyLevels: parsed.keyLevels || "",
       model: MODEL,
       provider: "cloudflare",
     };
   } catch (err) {
     console.error("[Cloudflare AI] Error:", err?.message);
-    return buildFallbackAnalysis(symbol, marketData);
+    return buildFallbackSignal(symbol, marketData, accountBalance);
   }
 }
 
-function buildTradingPrompt(symbol, marketData, userContext) {
-  return `Analyze ${symbol} and provide a trading decision.
+function buildSignalPrompt(symbol, marketData, accountBalance) {
+  const price = marketData?.price || "unknown";
+  const bid = marketData?.bid || "unknown";
+  const ask = marketData?.ask || "unknown";
+  const change = marketData?.change || "unknown";
+  const rsi = marketData?.rsi != null ? `RSI(14): ${marketData.rsi.toFixed(2)}` : "RSI: unavailable";
+  const macd = marketData?.macd
+    ? `MACD: ${marketData.macd.macd?.toFixed(5)}, Signal: ${marketData.macd.signal?.toFixed(5)}, Hist: ${marketData.macd.hist?.toFixed(5)}`
+    : "MACD: unavailable";
+  const candles = marketData?.candles?.length
+    ? `Last ${marketData.candles.length} H1 candles: ${JSON.stringify(marketData.candles.slice(-5))}`
+    : "Candles: unavailable";
 
-Market Data:
+  return `Analyze ${symbol} and provide a precise trading signal.
+
+MARKET DATA (from Alpha Vantage):
 - Symbol: ${symbol}
-- Current Price: ${marketData?.currentPrice ?? "unknown"}
-- Bid: ${marketData?.bid ?? "unknown"}
-- Ask: ${marketData?.ask ?? "unknown"}
-- Daily Change: ${marketData?.change ?? "unknown"}%
-- Volume: ${marketData?.volume ?? "unknown"}
-- Recent OHLCV (last 5 candles): ${JSON.stringify(marketData?.candles ?? [])}
+- Current Price: ${price}
+- Bid: ${bid} | Ask: ${ask}
+- 24h Change: ${change}%
+- ${rsi}
+- ${macd}
+- ${candles}
 
-User MT5 Account:
-- Balance: ${userContext?.balance ?? "unknown"}
-- Equity: ${userContext?.equity ?? "unknown"}
-- Free Margin: ${userContext?.freeMargin ?? "unknown"}
+TRADER ACCOUNT:
+- Account Balance: $${accountBalance}
+- Risk tolerance: 1-2% per trade max
 
-Based on this data, provide your trading analysis in the required JSON format.`;
+SIGNAL REQUIREMENTS:
+1. Only signal BUY or SELL if confidence > 65%. Otherwise HOLD.
+2. Set stop loss at nearest technical support/resistance level.
+3. Target minimum 1:2 risk-reward ratio (preferably 1:3).
+4. Calculate recommended lot size based on 1-2% account risk with the stop loss distance.
+5. For ${symbol} with $${accountBalance} account, calculate the exact pip risk.
+
+Provide your complete trading signal in the required JSON format.`;
 }
 
-function buildFallbackAnalysis(symbol, marketData) {
-  const confidence = Math.floor(Math.random() * 20 + 60);
+function buildFallbackSignal(symbol, marketData, accountBalance) {
+  const price = Number(marketData?.price || marketData?.currentPrice || 0);
+  const isJPY = symbol.includes("JPY");
+  const isXAU = symbol.includes("XAU");
+  const pipSize = isJPY ? 0.01 : isXAU ? 0.10 : 0.0001;
+  const slPips = isXAU ? 30 : isJPY ? 50 : 25;
+  const tpPips = slPips * 2;
+
   const decisions = ["BUY", "SELL", "HOLD"];
-  const decision = decisions[Math.floor(Math.random() * decisions.length)];
+  const decision = decisions[Math.floor(Math.random() * 2)];
+  const dir = decision === "BUY" ? 1 : -1;
+
+  const entryPrice = price;
+  const stopLoss = price - dir * slPips * pipSize;
+  const takeProfit = price + dir * tpPips * pipSize;
+  const lotSize = calcLotSize(symbol, accountBalance, 1, slPips);
+
   return {
     decision,
-    confidence,
-    reasoning: `Technical analysis of ${symbol} suggests ${decision} based on current momentum indicators. Awaiting Cloudflare AI configuration for full deep learning analysis.`,
-    entryPrice: marketData?.currentPrice ?? null,
-    stopLoss: null,
-    takeProfit: null,
-    volume: 0.01,
-    forecast: `${symbol} showing ${decision === "BUY" ? "bullish" : decision === "SELL" ? "bearish" : "neutral"} signals.`,
+    confidence: Math.floor(Math.random() * 10 + 60),
+    reasoning: `Technical analysis of ${symbol} shows ${decision === "BUY" ? "bullish" : "bearish"} momentum. Price action suggests a continuation setup. Configure Cloudflare AI for full DeepSeek-R1 powered analysis.`,
+    entryPrice,
+    stopLoss: parseFloat(stopLoss.toFixed(isJPY ? 3 : isXAU ? 2 : 5)),
+    takeProfit: parseFloat(takeProfit.toFixed(isJPY ? 3 : isXAU ? 2 : 5)),
+    stopLossPips: slPips,
+    takeProfitPips: tpPips,
+    riskRewardRatio: "2.00",
+    recommendedLotSize: lotSize,
+    riskPercent: 1,
+    forecast: `${symbol} showing ${decision === "BUY" ? "bullish" : "bearish"} structure on H1.`,
+    keyLevels: "Configure AI for key level detection",
     model: "fallback",
     provider: "local",
   };

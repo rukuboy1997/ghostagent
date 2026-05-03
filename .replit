@@ -31,5 +31,8 @@ channel = "stable-25_05"
 [userenv]
 
 [userenv.shared]
-POSTGRES_URL = "postgresql://neondb_owner:npg_fG5x6NQDPIcv@ep-soft-base-ai2366cv-pooler.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require"
+POSTGRES_URL = "postgresql://neondb_owner:npg_85XNDZpGahJw@ep-red-paper-amibl4pt-pooler.c-5.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
 VITE_CLERK_PUBLISHABLE_KEY = "pk_test_cmVsYXRlZC1nYXRvci03MC5jbGVyay5hY2NvdW50cy5kZXYk"
+ALPHA_VANTAGE_KEY = "O83Y94X7BNP5VSRQ"
+CLOUDFLARE_ACCOUNT_ID = "e807f8a5b16caecab9e0505dbcc66938"
+CLOUDFLARE_API_TOKEN = "cfat_FkOlD3FPIWiKVlpPNg2xWyQh8WVlqzvCqcJlHU4padcfdd6b"

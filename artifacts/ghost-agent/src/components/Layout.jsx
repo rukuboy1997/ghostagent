@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, TrendingUp, User, Plug, Menu, X, Ghost } from "lucide-react";
+import { LayoutDashboard, Radio, User, Menu, X, Ghost } from "lucide-react";
 import { useAuth, UserButton, SignInButton } from "@clerk/react";
 import { useQuery } from "@tanstack/react-query";
 import { getApiUrl } from "@/lib/api";
@@ -29,8 +29,7 @@ function Layout({ children }) {
 
   const navLinks = [
     { href: "/", icon: <LayoutDashboard size={16} />, label: "Dashboard", active: location === "/" },
-    { href: "/trading", icon: <TrendingUp size={16} />, label: "Trading", active: location === "/trading" },
-    { href: "/connect-mt5", icon: <Plug size={16} />, label: "MT5", active: location === "/connect-mt5" },
+    { href: "/signals", icon: <Radio size={16} />, label: "Signals", active: location === "/signals" || location === "/trading" },
     { href: "/account", icon: <User size={16} />, label: "Account", active: location === "/account" },
   ];
 
@@ -47,7 +46,7 @@ function Layout({ children }) {
           </h1>
           <div className="ml-2 px-2 py-0.5 text-[10px] bg-primary/10 text-primary border border-primary/30 uppercase tracking-widest items-center gap-2 hidden lg:flex">
             <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-            AI Trading
+            Signal AI
           </div>
         </div>
 

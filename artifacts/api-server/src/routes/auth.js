@@ -33,8 +33,7 @@ router.get("/me", requireAuth(), async (req, res) => {
     const { userId } = getAuth(req);
     const [user] = await db.select().from(users).where(eq(users.clerkId, userId));
     if (!user) return res.status(404).json({ error: "User not found" });
-    const { mt5Password, ...safeUser } = user;
-    res.json({ user: safeUser });
+    res.json({ user });
   } catch (err) {
     req.log.error({ err }, "Get me failed");
     res.status(500).json({ error: "Internal server error" });
