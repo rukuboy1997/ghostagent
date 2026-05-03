@@ -232,7 +232,7 @@ export default function Signals() {
   const { getToken } = useAuth();
   const qc = useQueryClient();
   const [symbol, setSymbol] = useState("EURUSD");
-  const [accountBalance, setAccountBalance] = useState("");
+  const [accountBalance, setAccountBalance] = useState("50");
   const [analysis, setAnalysis] = useState(null);
   const [savedSignal, setSavedSignal] = useState(null);
   const [error, setError] = useState(null);
