@@ -133,7 +133,7 @@ function buildSignalPrompt(symbol, marketData, accountBalance) {
 
   return `Analyze ${symbol} and provide a precise trading signal.
 
-MARKET DATA (from Alpha Vantage):
+MARKET DATA (live from FMP):
 - Symbol: ${symbol}
 - Current Price: ${price}
 - Bid: ${bid} | Ask: ${ask}

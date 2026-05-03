@@ -3,7 +3,8 @@ import { requireUser, getAuth } from "../middlewares/authMiddleware.js";
 import { eq, desc } from "drizzle-orm";
 import { db, users, trades } from "../db/index.js";
 import { analyzeMarket } from "../lib/cloudflare-ai.js";
-import { getMarketDataWithIndicators, isAlphaVantageEnabled } from "../lib/alphavantage.js";
+import { getMarketDataWithIndicators as fmpGetMarket, isFmpEnabled } from "../lib/fmp.js";
+import { getMarketDataWithIndicators as avGetMarket, isAlphaVantageEnabled } from "../lib/alphavantage.js";
 
 const router = Router();
 
@@ -18,7 +19,7 @@ function buildFallbackMarketData(symbol) {
   const isETH = s.includes("ETH");
   const isOIL = s === "USOIL" || s === "WTI";
 
-  let base = isJPY ? 149.5 : isXAU ? 2350 : isXAG ? 27.5 : isBTC ? 67000 : isETH ? 3200 : isOIL ? 82 : 1.085;
+  let base = isJPY ? 155.2 : isXAU ? 3313 : isXAG ? 32.5 : isBTC ? 78630 : isETH ? 3100 : isOIL ? 82 : 1.085;
   const spread = isXAU ? 0.5 : isJPY ? 0.015 : isBTC ? 50 : isETH ? 5 : 0.00015;
 
   return {
@@ -63,14 +64,21 @@ router.post("/analyze", requireUser(), async (req, res) => {
 
     let marketData;
     try {
-      if (isAlphaVantageEnabled()) {
-        marketData = await getMarketDataWithIndicators(symbol);
+      if (isFmpEnabled()) {
+        marketData = await fmpGetMarket(symbol);
+      } else if (isAlphaVantageEnabled()) {
+        marketData = await avGetMarket(symbol);
       } else {
         marketData = buildFallbackMarketData(symbol);
       }
     } catch (e) {
       req.log.warn({ err: e.message }, "Market data fetch failed, using fallback");
-      marketData = buildFallbackMarketData(symbol);
+      try {
+        if (isAlphaVantageEnabled()) marketData = await avGetMarket(symbol);
+        else marketData = buildFallbackMarketData(symbol);
+      } catch {
+        marketData = buildFallbackMarketData(symbol);
+      }
     }
 
     const analysis = await analyzeMarket({ symbol, marketData, accountBalance: tradingBal });
