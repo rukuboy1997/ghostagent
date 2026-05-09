@@ -1,14 +1,17 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Radio, User, Menu, X, Ghost, Zap, Wifi } from "lucide-react";
+import { LayoutDashboard, Radio, User, Menu, X, Ghost, Zap, Wifi, BookOpen, Bell, BellOff } from "lucide-react";
 import { useAuth, UserButton, SignInButton } from "@clerk/react";
 import { useQuery } from "@tanstack/react-query";
 import { getApiUrl } from "@/lib/api";
+import { useNotifications } from "@/components/NotificationProvider";
 
 function Layout({ children }) {
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { isSignedIn, isLoaded } = useAuth();
+  const { permission, connected, lastSignal, requestPermission } = useNotifications();
+  const [signalFlash, setSignalFlash] = useState(false);
 
   const { data: health } = useQuery({
     queryKey: ["health"],
@@ -19,19 +22,22 @@ function Layout({ children }) {
 
   const isHealthy = health?.status === "ok" || health?.status === "healthy";
 
+  useEffect(() => { document.documentElement.classList.add("dark"); }, []);
+  useEffect(() => { setMobileMenuOpen(false); }, [location]);
   useEffect(() => {
-    document.documentElement.classList.add("dark");
-  }, []);
-
-  useEffect(() => {
-    setMobileMenuOpen(false);
-  }, [location]);
+    if (lastSignal) {
+      setSignalFlash(true);
+      const t = setTimeout(() => setSignalFlash(false), 4000);
+      return () => clearTimeout(t);
+    }
+  }, [lastSignal]);
 
   const navLinks = [
-    { href: "/", icon: <LayoutDashboard size={16} />, label: "Dashboard", active: location === "/" },
-    { href: "/signals", icon: <Radio size={16} />, label: "Signals", active: location === "/signals" },
-    { href: "/trading", icon: <Zap size={16} />, label: "Auto-Trade", active: location === "/trading" || location === "/connect-mt5" },
-    { href: "/account", icon: <User size={16} />, label: "Account", active: location === "/account" },
+    { href: "/",           icon: <LayoutDashboard size={16} />, label: "Dashboard",   active: location === "/" },
+    { href: "/signals",    icon: <Radio size={16} />,           label: "Signals",     active: location === "/signals" },
+    { href: "/trading",    icon: <Zap size={16} />,             label: "Auto-Trade",  active: location === "/trading" || location === "/connect-mt5" },
+    { href: "/journal",    icon: <BookOpen size={16} />,        label: "Journal",     active: location === "/journal" },
+    { href: "/account",    icon: <User size={16} />,            label: "Account",     active: location === "/account" },
   ];
 
   return (
@@ -39,13 +45,22 @@ function Layout({ children }) {
       <div className="scanlines" />
       <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5 pointer-events-none mix-blend-overlay" />
 
+      {/* Signal flash banner */}
+      {signalFlash && lastSignal && (
+        <div className={`sticky top-0 z-50 px-4 py-2 text-xs font-mono font-bold uppercase tracking-wider flex items-center justify-center gap-3 animate-in slide-in-from-top duration-300 ${lastSignal.decision === "BUY" ? "bg-green-500/20 border-b border-green-500/40 text-green-300" : "bg-red-500/20 border-b border-red-500/40 text-red-300"}`}>
+          <span className="animate-pulse">▲</span>
+          NEW SIGNAL: {lastSignal.decision} {lastSignal.symbol} · {lastSignal.confidence}% confidence · {lastSignal.confluenceScore}/8 confluence
+          <button className="ml-4 opacity-60 hover:opacity-100" onClick={() => setSignalFlash(false)}>✕</button>
+        </div>
+      )}
+
       <header className="h-16 border-b border-border/50 flex items-center px-4 sm:px-6 justify-between bg-background/80 backdrop-blur-md sticky top-0 z-40">
         <div className="flex items-center gap-3">
           <Ghost size={24} className="text-primary" />
           <h1 className="text-lg sm:text-xl font-bold tracking-tighter text-primary uppercase glitch-effect" data-text="GHOSTAGENT">
             GHOSTAGENT
           </h1>
-          <div className="ml-2 px-2 py-0.5 text-[10px] bg-primary/10 text-primary border border-primary/30 uppercase tracking-widest items-center gap-2 hidden lg:flex">
+          <div className="ml-2 px-2 py-0.5 text-[10px] bg-primary/10 text-primary border border-primary/30 items-center gap-2 hidden lg:flex">
             <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
             DeepSeek-R1 AI
           </div>
@@ -59,13 +74,31 @@ function Layout({ children }) {
           ))}
         </nav>
 
-        <div className="flex items-center gap-3">
-          <div className="text-[10px] text-muted-foreground hidden sm:flex flex-col items-end">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="text-[10px] text-muted-foreground hidden sm:flex flex-col items-end gap-0.5">
             <span className={`flex items-center gap-1 ${isHealthy ? "text-green-400" : "text-yellow-400"}`}>
               <Wifi size={10} />
               {isHealthy ? "SYS: ONLINE" : "SYS: DEGRADED"}
             </span>
+            {isSignedIn && (
+              <span className={`flex items-center gap-1 ${connected ? "text-primary" : "text-muted-foreground/50"}`}>
+                <span className={`w-1 h-1 rounded-full ${connected ? "bg-primary animate-pulse" : "bg-muted-foreground/30"}`} />
+                {connected ? "LIVE" : "OFFLINE"}
+              </span>
+            )}
           </div>
+
+          {/* Notification bell */}
+          {isSignedIn && isLoaded && (
+            <button
+              title={permission === "granted" ? "Notifications enabled" : "Enable desktop notifications"}
+              onClick={permission !== "granted" ? requestPermission : undefined}
+              className={`p-1.5 border transition-colors ${permission === "granted" ? "border-primary/30 text-primary" : "border-border/50 text-muted-foreground hover:text-foreground hover:border-border"}`}
+            >
+              {permission === "granted" ? <Bell size={14} /> : <BellOff size={14} />}
+            </button>
+          )}
+
           {isLoaded && isSignedIn && <UserButton afterSignOutUrl="/" />}
           {isLoaded && !isSignedIn && (
             <SignInButton mode="modal">

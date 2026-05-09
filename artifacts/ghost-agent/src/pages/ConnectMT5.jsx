@@ -54,7 +54,7 @@ export default function ConnectMT5() {
   const { data: status, refetch: refetchStatus } = useQuery({
     queryKey: ["mt5-status"],
     queryFn: () => authGet("/api/mt5/status", getToken),
-    refetchInterval: status?.state === "DEPLOYING" ? 5000 : false,
+    refetchInterval: (query) => query.state.data?.state === "DEPLOYING" ? 5000 : false,
   });
 
   const connectMutation = useMutation({

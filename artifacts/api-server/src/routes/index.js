@@ -5,6 +5,7 @@ import signalsRouter from "./signals.js";
 import paymentsRouter from "./payments.js";
 import mt5Router from "./mt5.js";
 import tradingRouter from "./trading.js";
+import notificationsRouter from "./notifications.js";
 
 const router = Router();
 router.use(healthRouter);
@@ -13,5 +14,6 @@ router.use("/signals", signalsRouter);
 router.use("/payments", paymentsRouter);
 router.use("/mt5", mt5Router);
 router.use("/trading", tradingRouter);
+router.use("/notifications", notificationsRouter);
 
 export default router;

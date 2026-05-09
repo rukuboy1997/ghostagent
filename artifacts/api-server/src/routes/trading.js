@@ -3,8 +3,8 @@ import { requireAuth, getAuth } from "@clerk/express";
 import { eq, desc } from "drizzle-orm";
 import { db, users, trades } from "../db/index.js";
 import { analyzeMarket } from "../lib/cloudflare-ai.js";
-import { getMarketData, getAccountInfo, placeTrade, isMetaApiEnabled, getAccountStatus } from "../lib/metaapi.js";
-import { getMarketDataWithIndicators, isTwelveDataEnabled } from "../lib/twelvedata.js";
+import { getMarketDataWithIndicators, placeTrade, isMetaApiEnabled, getAccountStatus } from "../lib/metaapi.js";
+import { emitSignalNotification } from "../lib/notifications.js";
 
 const router = Router();
 
@@ -12,6 +12,27 @@ const USER_SHARE = 0.80;
 const GHOST_SHARE = 0.20;
 const TRADES_BEFORE_SHARE_REQUIRED = 3;
 const MIN_BALANCE_USD = 10;
+
+function buildFallbackMarketData(symbol) {
+  const s = symbol.toUpperCase().replace("/", "");
+  const priceMap = {
+    EURUSD: 1.0850, GBPUSD: 1.2750, USDJPY: 149.50, USDCAD: 1.3650,
+    AUDUSD: 0.6520, USDCHF: 0.8980, NZDUSD: 0.5990, GBPJPY: 190.80,
+    EURJPY: 162.20, EURGBP: 0.8510, XAUUSD: 2350.00, XAGUSD: 28.50,
+    BTCUSD: 67000.00, ETHUSD: 3200.00,
+  };
+  const price = priceMap[s] || 1.0000;
+  const spread = s.includes("JPY") ? 0.015 : s.includes("XAU") ? 0.5 : 0.00015;
+  return {
+    symbol, price, bid: price - spread, ask: price + spread, change: "0",
+    candles: { h1: [], h4: [], d1: [] },
+    rsi: { h1: null, h4: null, d1: null },
+    macd: { h1: null, h4: null },
+    bb: { h1: null }, atr: null, stoch: null,
+    ema: { ema20: null, ema50: null, ema200: null },
+    source: "fallback",
+  };
+}
 
 router.post("/analyze", requireAuth(), async (req, res) => {
   try {
@@ -42,30 +63,31 @@ router.post("/analyze", requireAuth(), async (req, res) => {
       return res.status(400).json({ error: "Trading account balance must be at least $10 for risk management." });
     }
 
-    let marketData = {};
+    // Fetch live data from connected MT5 account via MetaAPI
+    let marketData = buildFallbackMarketData(symbol);
 
-    try {
-      if (isTwelveDataEnabled()) {
-        marketData = await getMarketDataWithIndicators(symbol);
-      } else if (isMetaApiEnabled() && user.mt5AccountId && !user.mt5AccountId.startsWith("demo-")) {
-        try {
-          const status = await getAccountStatus(user.mt5AccountId);
-          if (status.connectionStatus === "CONNECTED") {
-            const mt5Data = await getMarketData(user.mt5AccountId, symbol);
-            marketData = { symbol, price: mt5Data.currentPrice, bid: mt5Data.bid, ask: mt5Data.ask };
-          }
-        } catch (_) {}
+    if (isMetaApiEnabled() && user.mt5AccountId && !user.mt5AccountId.startsWith("demo-")) {
+      try {
+        const status = await getAccountStatus(user.mt5AccountId);
+        if (status.connectionStatus === "CONNECTED") {
+          marketData = await getMarketDataWithIndicators(user.mt5AccountId, symbol);
+        }
+      } catch (e) {
+        req.log.warn({ err: e.message }, "MetaAPI data fetch failed, using fallback prices");
       }
-    } catch (e) {
-      req.log.warn({ err: e.message }, "Market data fetch failed, using defaults");
-    }
-
-    if (!marketData.price) {
-      const base = symbol.includes("JPY") ? 149.5 : symbol.includes("XAU") ? 2350 : symbol.includes("GBP") ? 1.275 : 1.085;
-      marketData = { symbol, price: base, bid: base - 0.00015, ask: base + 0.00015 };
     }
 
     const analysis = await analyzeMarket({ symbol, marketData, accountBalance: tradingBal });
+
+    if (analysis.decision !== "HOLD" && analysis.confidence >= 72) {
+      emitSignalNotification(userId, {
+        symbol, decision: analysis.decision, confidence: analysis.confidence,
+        confluenceScore: analysis.confluenceScore, entryPrice: analysis.entryPrice,
+        stopLoss: analysis.stopLoss, takeProfit: analysis.takeProfit, session: analysis.session,
+        source: "auto-trade",
+      });
+    }
+
     res.json({ analysis, marketData });
   } catch (err) {
     req.log.error({ err }, "Trade analysis failed");
@@ -112,25 +134,18 @@ router.post("/execute", requireAuth(), async (req, res) => {
     let mt5TicketId = null;
 
     if (isMetaApiEnabled() && !user.mt5AccountId.startsWith("demo-")) {
-      try {
-        const status = await getAccountStatus(user.mt5AccountId);
-        if (status.connectionStatus === "CONNECTED") {
-          mt5Result = await placeTrade(user.mt5AccountId, {
-            symbol,
-            type: analysis.decision,
-            volume: analysis.recommendedLotSize || 0.01,
-            stopLoss: analysis.stopLoss,
-            takeProfit: analysis.takeProfit,
-          });
-          mt5TicketId = mt5Result?.orderId || mt5Result?.positionId || null;
-        } else {
-          return res.status(503).json({ error: "MT5 account is not connected. Please check your account status." });
-        }
-      } catch (e) {
-        req.log.error({ err: e.message }, "MT5 trade execution failed");
-        return res.status(500).json({ error: "MT5 trade failed: " + e.message });
+      const status = await getAccountStatus(user.mt5AccountId);
+      if (status.connectionStatus !== "CONNECTED") {
+        return res.status(503).json({ error: "MT5 account is not connected. Please check your account status." });
       }
-    } else if (user.mt5AccountId.startsWith("demo-")) {
+      mt5Result = await placeTrade(user.mt5AccountId, {
+        symbol, type: analysis.decision,
+        volume: analysis.recommendedLotSize || 0.01,
+        stopLoss: analysis.stopLoss,
+        takeProfit: analysis.takeProfit,
+      });
+      mt5TicketId = mt5Result?.orderId || mt5Result?.positionId || null;
+    } else {
       mt5TicketId = `demo-${Date.now()}`;
     }
 
@@ -182,9 +197,7 @@ router.post("/:tradeId/close", requireAuth(), async (req, res) => {
 
     if (!trade || trade.userId !== user.id) return res.status(404).json({ error: "Trade not found" });
     if (trade.signalStatus !== "active") return res.status(400).json({ error: "Trade already closed" });
-
-    const validOutcomes = ["tp_hit", "sl_hit", "expired"];
-    if (!validOutcomes.includes(outcome)) return res.status(400).json({ error: "Invalid outcome" });
+    if (!["tp_hit", "sl_hit", "expired"].includes(outcome)) return res.status(400).json({ error: "Invalid outcome" });
 
     const [updated] = await db.update(trades).set({
       signalStatus: outcome,

@@ -10,6 +10,7 @@ import Signals from "@/pages/Signals";
 import Account from "@/pages/Account";
 import Trading from "@/pages/Trading";
 import ConnectMT5 from "@/pages/ConnectMT5";
+import Journal from "@/pages/Journal";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30000 } },
@@ -56,6 +57,7 @@ function Router() {
         <Route path="/signals" component={() => <ProtectedRoute component={Signals} />} />
         <Route path="/trading" component={() => <ProtectedRoute component={Trading} />} />
         <Route path="/connect-mt5" component={() => <ProtectedRoute component={ConnectMT5} />} />
+        <Route path="/journal" component={() => <ProtectedRoute component={Journal} />} />
         <Route path="/account" component={() => <ProtectedRoute component={Account} />} />
         <Route component={NotFound} />
       </Switch>
