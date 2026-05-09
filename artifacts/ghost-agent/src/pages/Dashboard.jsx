@@ -2,7 +2,11 @@ import { useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth, useUser } from "@clerk/react";
 import { Link } from "wouter";
-import { TrendingUp, TrendingDown, Activity, Brain, AlertCircle, BarChart2, Clock, CheckCircle, XCircle, Ghost } from "lucide-react";
+import {
+  TrendingUp, TrendingDown, Activity, Brain, AlertCircle, BarChart2,
+  Clock, CheckCircle, XCircle, Ghost, Zap, Server, Target, Shield,
+  DollarSign, ArrowRight
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -49,6 +53,13 @@ export default function Dashboard() {
     refetchInterval: 30000,
   });
 
+  const { data: mt5Status } = useQuery({
+    queryKey: ["mt5-status"],
+    queryFn: () => authGet("/api/mt5/status", getToken),
+    enabled: isSignedIn,
+    refetchInterval: 30000,
+  });
+
   const { data: signalHistory, isLoading: historyLoading } = useQuery({
     queryKey: ["signal-history"],
     queryFn: () => authGet("/api/signals/history", getToken),
@@ -66,6 +77,8 @@ export default function Dashboard() {
   const totalClosed = tpCount + slCount;
   const winRate = totalClosed > 0 ? ((tpCount / totalClosed) * 100).toFixed(0) : "--";
   const activeSignals = signalHistory?.filter((s) => s.signalStatus === "active").length ?? 0;
+  const balance = Number(me?.user?.balance ?? 0);
+  const hasMinBalance = balance >= 10;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -75,26 +88,54 @@ export default function Dashboard() {
             <Activity size={24} /> Dashboard
           </h2>
           <p className="text-muted-foreground text-sm uppercase tracking-wider mt-1">
-            Welcome back, {user?.firstName || "Trader"}
+            Welcome back, {user?.firstName || "Trader"} — DeepSeek-R1 is ready
           </p>
         </div>
         <div className="text-right">
-          <div className="text-xs text-muted-foreground uppercase tracking-wider">GhostAgent Balance</div>
-          <div className="text-2xl font-bold text-primary font-mono">
-            ${Number(me?.user?.balance ?? 0).toFixed(2)}
+          <div className="text-xs text-muted-foreground uppercase tracking-wider">Ghost Balance</div>
+          <div className={`text-2xl font-bold font-mono ${hasMinBalance ? "text-primary" : "text-orange-400"}`}>
+            ${balance.toFixed(2)}
           </div>
         </div>
       </div>
+
+      {!hasMinBalance && (
+        <div className="border border-orange-500/30 bg-orange-500/5 p-4 flex items-center gap-3">
+          <DollarSign size={18} className="text-orange-400 shrink-0" />
+          <span className="text-sm text-orange-300">
+            Deposit <strong>$10</strong> to your GhostAgent account to start receiving AI trading signals.
+          </span>
+          <Link href="/account">
+            <Button size="sm" variant="outline" className="border-orange-500/50 text-orange-400 hover:bg-orange-500/10 ml-auto uppercase text-xs tracking-widest">
+              Deposit Now
+            </Button>
+          </Link>
+        </div>
+      )}
 
       {status?.shareRequired && (
         <div className="border border-red-500/30 bg-red-500/5 p-4 flex items-center gap-3">
           <AlertCircle size={18} className="text-red-400 shrink-0" />
           <div className="flex-1 text-sm text-red-300">
-            <strong>3 TP signals hit!</strong> Send GhostAgent's share to unlock more signals.
+            <strong>3 TP signals hit!</strong> Send GhostAgent's 20% share to unlock more signals.
           </div>
           <Link href="/account">
             <Button size="sm" variant="outline" className="border-red-500/50 text-red-400 hover:bg-red-500/10 uppercase text-xs tracking-widest">
-              <Ghost size={12} className="mr-1" /> Pay Share
+              <Ghost size={12} className="mr-1" /> Pay 20% Share
+            </Button>
+          </Link>
+        </div>
+      )}
+
+      {!mt5Status?.connected && hasMinBalance && (
+        <div className="border border-yellow-500/20 bg-yellow-500/5 p-4 flex items-center gap-3">
+          <Server size={18} className="text-yellow-400 shrink-0" />
+          <span className="text-sm text-yellow-300">
+            Connect your MT5 account to enable auto-trading and live market analysis.
+          </span>
+          <Link href="/connect-mt5">
+            <Button size="sm" variant="outline" className="border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10 ml-auto uppercase text-xs tracking-widest">
+              Connect MT5 <ArrowRight size={12} className="ml-1" />
             </Button>
           </Link>
         </div>
@@ -119,12 +160,14 @@ export default function Dashboard() {
           value={winRate !== "--" ? `${winRate}%` : "--"}
           sub={`${tpCount}W / ${slCount}L`}
           icon={<TrendingUp size={18} className="text-green-400" />}
+          valueClass={winRate !== "--" && Number(winRate) >= 60 ? "text-green-400" : ""}
         />
         <StatCard
           title="TP Progress"
           value={`${status?.tpSignalsSinceLastShare ?? 0}/3`}
-          sub="Share threshold"
-          icon={<BarChart2 size={18} className="text-primary" />}
+          sub={status?.shareRequired ? "Share required!" : "Until share due"}
+          icon={<BarChart2 size={18} className={status?.shareRequired ? "text-red-400" : "text-primary"} />}
+          valueClass={status?.shareRequired ? "text-red-400" : ""}
         />
       </div>
 
@@ -146,7 +189,7 @@ export default function Dashboard() {
                   NO SIGNALS YET
                   <br />
                   <Link href="/signals">
-                    <span className="text-primary hover:underline cursor-pointer mt-2 inline-block">Get your first signal</span>
+                    <span className="text-primary hover:underline cursor-pointer mt-2 inline-block">Get your first AI signal</span>
                   </Link>
                 </div>
               ) : (
@@ -158,38 +201,76 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/50 bg-card/50 backdrop-blur">
-          <CardHeader className="border-b border-border/50 pb-4">
-            <CardTitle className="uppercase tracking-widest text-sm flex items-center gap-2 text-primary">
-              <Activity size={16} /> Status
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-4 space-y-4">
-            <StatusRow label="Signal Access" value={status?.canGetSignal ? "ACTIVE" : "LOCKED"} ok={status?.canGetSignal} />
-            <StatusRow label="Share Due" value={status?.shareRequired ? "YES" : "NO"} ok={!status?.shareRequired} />
-            <StatusRow label="TP Signals" value={`${status?.tpSignalsSinceLastShare ?? 0}/3`} ok={(status?.tpSignalsSinceLastShare ?? 0) < 3} />
+        <div className="space-y-4">
+          <Card className="border-border/50 bg-card/50 backdrop-blur">
+            <CardHeader className="border-b border-border/50 pb-4">
+              <CardTitle className="uppercase tracking-widest text-sm flex items-center gap-2 text-primary">
+                <Activity size={16} /> Status
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 space-y-3">
+              <StatusRow label="Signal Access" value={status?.canGetSignal ? "ACTIVE" : "LOCKED"} ok={status?.canGetSignal} />
+              <StatusRow label="Ghost Balance" value={hasMinBalance ? "FUNDED" : "NEEDS $10"} ok={hasMinBalance} />
+              <StatusRow label="Share Due" value={status?.shareRequired ? "YES" : "NO"} ok={!status?.shareRequired} />
+              <StatusRow label="MT5 Account" value={mt5Status?.connected ? "CONNECTED" : "NOT SET"} ok={mt5Status?.connected} />
+              <StatusRow label="TP Count" value={`${status?.tpSignalsSinceLastShare ?? 0}/3`} ok={(status?.tpSignalsSinceLastShare ?? 0) < 3} />
 
-            <div className="border-t border-border/50 pt-4 space-y-2">
-              <div className="text-xs text-muted-foreground uppercase tracking-wider">Ghost Share Rule</div>
-              <p className="text-xs text-foreground/70 leading-relaxed">
-                After every 3 TP signals, send GhostAgent's share to continue. Share amount is determined by your results.
-              </p>
-            </div>
+              <div className="border-t border-border/50 pt-3 space-y-1.5">
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">Profit Structure</div>
+                <div className="flex justify-between text-xs font-mono">
+                  <span className="text-muted-foreground">Your share:</span>
+                  <span className="text-green-400 font-bold">80%</span>
+                </div>
+                <div className="flex justify-between text-xs font-mono">
+                  <span className="text-muted-foreground">Ghost share:</span>
+                  <span className="text-primary font-bold">20%</span>
+                </div>
+                <div className="text-[10px] text-muted-foreground/60 mt-1">After every 3 TP signals</div>
+              </div>
 
-            <div className="flex flex-col gap-2 pt-2">
-              <Link href="/signals">
-                <Button className="w-full uppercase tracking-widest text-xs" disabled={!status?.canGetSignal}>
-                  <Brain size={14} className="mr-1" /> Get Signal
-                </Button>
-              </Link>
-              <Link href="/account">
-                <Button variant="outline" className="w-full uppercase tracking-widest text-xs">
-                  <Ghost size={14} className="mr-1" /> Account
-                </Button>
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
+              <div className="flex flex-col gap-2 pt-1">
+                <Link href="/signals">
+                  <Button className="w-full uppercase tracking-widest text-xs" disabled={!status?.canGetSignal}>
+                    <Brain size={14} className="mr-1" /> Get Signal
+                  </Button>
+                </Link>
+                <Link href="/trading">
+                  <Button variant="outline" className="w-full uppercase tracking-widest text-xs" disabled={!mt5Status?.connected}>
+                    <Zap size={14} className="mr-1" /> Auto-Trade
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/50 bg-card/50 backdrop-blur">
+            <CardHeader className="border-b border-border/50 pb-3">
+              <CardTitle className="uppercase tracking-widest text-xs flex items-center gap-2 text-primary">
+                <Shield size={12} /> Signal Quality
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-3 space-y-2 text-xs">
+              <div className="flex items-center gap-2 text-green-400/80">
+                <CheckCircle size={10} /> Multi-timeframe (D1/H4/H1)
+              </div>
+              <div className="flex items-center gap-2 text-green-400/80">
+                <CheckCircle size={10} /> 6+ indicator confluence required
+              </div>
+              <div className="flex items-center gap-2 text-green-400/80">
+                <CheckCircle size={10} /> Min 72% confidence threshold
+              </div>
+              <div className="flex items-center gap-2 text-green-400/80">
+                <CheckCircle size={10} /> Min 1:2.5 risk-reward ratio
+              </div>
+              <div className="flex items-center gap-2 text-green-400/80">
+                <CheckCircle size={10} /> ATR-based stop loss calculation
+              </div>
+              <div className="flex items-center gap-2 text-green-400/80">
+                <CheckCircle size={10} /> DeepSeek-R1 AI reasoning
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );
@@ -237,15 +318,18 @@ function SignalRow({ signal }) {
         </div>
         <div>
           <div className="text-sm font-bold font-mono">{signal.symbol}</div>
-          <div className="text-xs text-muted-foreground">{new Date(signal.createdAt).toLocaleDateString()}</div>
+          <div className="text-xs text-muted-foreground">
+            {new Date(signal.createdAt).toLocaleDateString()} ·
+            {signal.confluenceScore ? <span className="text-primary ml-1">{signal.confluenceScore}/8 conf</span> : ""}
+          </div>
         </div>
       </div>
       <div className="text-right">
         <Badge variant="outline" className={`text-[10px] uppercase ${statusStyles.color}`}>
           {statusStyles.label}
         </Badge>
-        {signal.recommendedLotSize && (
-          <div className="text-[10px] text-muted-foreground mt-0.5">Lot {Number(signal.recommendedLotSize).toFixed(2)}</div>
+        {signal.aiConfidence && (
+          <div className="text-[10px] text-muted-foreground mt-0.5">{Number(signal.aiConfidence).toFixed(0)}% AI</div>
         )}
       </div>
     </div>

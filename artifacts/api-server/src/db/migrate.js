@@ -12,12 +12,16 @@ export async function runMigrations() {
         name VARCHAR(255),
         balance DECIMAL(18,8) NOT NULL DEFAULT 0,
         currency VARCHAR(10) NOT NULL DEFAULT 'USD',
-        trading_balance DECIMAL(18,2) DEFAULT 1000,
+        trading_balance DECIMAL(18,2) DEFAULT 50,
         total_trades INTEGER NOT NULL DEFAULT 0,
         trades_since_last_share INTEGER NOT NULL DEFAULT 0,
         tp_signals_since_last_share INTEGER NOT NULL DEFAULT 0,
         total_profit DECIMAL(18,8) NOT NULL DEFAULT 0,
         is_active BOOLEAN NOT NULL DEFAULT true,
+        mt5_login VARCHAR(100),
+        mt5_password VARCHAR(255),
+        mt5_server VARCHAR(255),
+        mt5_account_id VARCHAR(255),
         created_at TIMESTAMP NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMP NOT NULL DEFAULT NOW()
       );
@@ -46,6 +50,10 @@ export async function runMigrations() {
         key_levels TEXT,
         forecast_data JSONB,
         share_settled BOOLEAN NOT NULL DEFAULT false,
+        mt5_ticket_id VARCHAR(100),
+        timeframe VARCHAR(10),
+        session VARCHAR(20),
+        confluence_score INTEGER,
         closed_at TIMESTAMP,
         created_at TIMESTAMP NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMP NOT NULL DEFAULT NOW()
@@ -69,8 +77,14 @@ export async function runMigrations() {
     `);
 
     const alterStatements = [
-      `ALTER TABLE _trading_users ADD COLUMN IF NOT EXISTS trading_balance DECIMAL(18,2) DEFAULT 1000`,
+      `ALTER TABLE _trading_users ADD COLUMN IF NOT EXISTS trading_balance DECIMAL(18,2) DEFAULT 50`,
       `ALTER TABLE _trading_users ADD COLUMN IF NOT EXISTS tp_signals_since_last_share INTEGER NOT NULL DEFAULT 0`,
+      `ALTER TABLE _trading_users ADD COLUMN IF NOT EXISTS trades_since_last_share INTEGER NOT NULL DEFAULT 0`,
+      `ALTER TABLE _trading_users ADD COLUMN IF NOT EXISTS total_profit DECIMAL(18,8) NOT NULL DEFAULT 0`,
+      `ALTER TABLE _trading_users ADD COLUMN IF NOT EXISTS mt5_login VARCHAR(100)`,
+      `ALTER TABLE _trading_users ADD COLUMN IF NOT EXISTS mt5_password VARCHAR(255)`,
+      `ALTER TABLE _trading_users ADD COLUMN IF NOT EXISTS mt5_server VARCHAR(255)`,
+      `ALTER TABLE _trading_users ADD COLUMN IF NOT EXISTS mt5_account_id VARCHAR(255)`,
       `ALTER TABLE _trading_trades ADD COLUMN IF NOT EXISTS entry_price DECIMAL(18,8)`,
       `ALTER TABLE _trading_trades ADD COLUMN IF NOT EXISTS stop_loss DECIMAL(18,8)`,
       `ALTER TABLE _trading_trades ADD COLUMN IF NOT EXISTS take_profit DECIMAL(18,8)`,
@@ -84,6 +98,10 @@ export async function runMigrations() {
       `ALTER TABLE _trading_trades ADD COLUMN IF NOT EXISTS journal_note TEXT`,
       `ALTER TABLE _trading_trades ADD COLUMN IF NOT EXISTS forecast TEXT`,
       `ALTER TABLE _trading_trades ADD COLUMN IF NOT EXISTS key_levels TEXT`,
+      `ALTER TABLE _trading_trades ADD COLUMN IF NOT EXISTS mt5_ticket_id VARCHAR(100)`,
+      `ALTER TABLE _trading_trades ADD COLUMN IF NOT EXISTS timeframe VARCHAR(10)`,
+      `ALTER TABLE _trading_trades ADD COLUMN IF NOT EXISTS session VARCHAR(20)`,
+      `ALTER TABLE _trading_trades ADD COLUMN IF NOT EXISTS confluence_score INTEGER`,
     ];
 
     for (const stmt of alterStatements) {

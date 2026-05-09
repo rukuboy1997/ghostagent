@@ -8,6 +8,8 @@ import { Layout } from "@/components/Layout";
 import Dashboard from "@/pages/Dashboard";
 import Signals from "@/pages/Signals";
 import Account from "@/pages/Account";
+import Trading from "@/pages/Trading";
+import ConnectMT5 from "@/pages/ConnectMT5";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30000 } },
@@ -52,7 +54,8 @@ function Router() {
       <Switch>
         <Route path="/" component={() => <ProtectedRoute component={Dashboard} />} />
         <Route path="/signals" component={() => <ProtectedRoute component={Signals} />} />
-        <Route path="/trading" component={() => <ProtectedRoute component={Signals} />} />
+        <Route path="/trading" component={() => <ProtectedRoute component={Trading} />} />
+        <Route path="/connect-mt5" component={() => <ProtectedRoute component={ConnectMT5} />} />
         <Route path="/account" component={() => <ProtectedRoute component={Account} />} />
         <Route component={NotFound} />
       </Switch>

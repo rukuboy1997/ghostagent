@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Radio, User, Menu, X, Ghost } from "lucide-react";
+import { LayoutDashboard, Radio, User, Menu, X, Ghost, Zap, Wifi } from "lucide-react";
 import { useAuth, UserButton, SignInButton } from "@clerk/react";
 import { useQuery } from "@tanstack/react-query";
 import { getApiUrl } from "@/lib/api";
@@ -29,7 +29,8 @@ function Layout({ children }) {
 
   const navLinks = [
     { href: "/", icon: <LayoutDashboard size={16} />, label: "Dashboard", active: location === "/" },
-    { href: "/signals", icon: <Radio size={16} />, label: "Signals", active: location === "/signals" || location === "/trading" },
+    { href: "/signals", icon: <Radio size={16} />, label: "Signals", active: location === "/signals" },
+    { href: "/trading", icon: <Zap size={16} />, label: "Auto-Trade", active: location === "/trading" || location === "/connect-mt5" },
     { href: "/account", icon: <User size={16} />, label: "Account", active: location === "/account" },
   ];
 
@@ -46,7 +47,7 @@ function Layout({ children }) {
           </h1>
           <div className="ml-2 px-2 py-0.5 text-[10px] bg-primary/10 text-primary border border-primary/30 uppercase tracking-widest items-center gap-2 hidden lg:flex">
             <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-            Signal AI
+            DeepSeek-R1 AI
           </div>
         </div>
 
@@ -60,7 +61,8 @@ function Layout({ children }) {
 
         <div className="flex items-center gap-3">
           <div className="text-[10px] text-muted-foreground hidden sm:flex flex-col items-end">
-            <span className={isHealthy ? "text-green-400" : "text-yellow-400"}>
+            <span className={`flex items-center gap-1 ${isHealthy ? "text-green-400" : "text-yellow-400"}`}>
+              <Wifi size={10} />
               {isHealthy ? "SYS: ONLINE" : "SYS: DEGRADED"}
             </span>
           </div>

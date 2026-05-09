@@ -8,6 +8,7 @@ import { getMarketDataWithIndicators, isTwelveDataEnabled } from "../lib/twelved
 const router = Router();
 
 const TP_SIGNALS_BEFORE_SHARE = 3;
+const MIN_BALANCE_USD = 10;
 
 router.post("/analyze", requireUser(), async (req, res) => {
   try {
@@ -16,18 +17,21 @@ router.post("/analyze", requireUser(), async (req, res) => {
 
     if (!symbol) return res.status(400).json({ error: "symbol is required" });
 
-    if (!isTwelveDataEnabled()) {
-      return res.status(503).json({ error: "Market data service is not configured. Please contact support." });
-    }
-
     const [user] = await db.select().from(users).where(eq(users.clerkId, userId));
     if (!user) return res.status(404).json({ error: "User not found. Please sign in again." });
+
+    if (Number(user.balance) < MIN_BALANCE_USD) {
+      return res.status(402).json({
+        error: "insufficient_balance",
+        message: `A minimum GhostAgent balance of $${MIN_BALANCE_USD} is required to receive signals. Please deposit to your account.`,
+      });
+    }
 
     const shareRequired = user.tpSignalsSinceLastShare >= TP_SIGNALS_BEFORE_SHARE;
     if (shareRequired) {
       return res.status(402).json({
         error: "share_required",
-        message: `You've had ${TP_SIGNALS_BEFORE_SHARE} signals reach Take Profit! Please send GhostAgent's share before receiving more signals.`,
+        message: `You've had ${TP_SIGNALS_BEFORE_SHARE} signals reach Take Profit! Please send GhostAgent's 20% share before receiving more signals.`,
         tpSignals: user.tpSignalsSinceLastShare,
       });
     }
@@ -37,16 +41,22 @@ router.post("/analyze", requireUser(), async (req, res) => {
       : parseFloat(user.tradingBalance || 50);
 
     if (tradingBal < 10) {
-      return res.status(400).json({ error: "Account balance must be at least $10 for risk management calculation." });
+      return res.status(400).json({ error: "Trading account balance must be at least $10 for proper risk management." });
     }
 
     let marketData;
     try {
-      marketData = await getMarketDataWithIndicators(symbol);
+      if (isTwelveDataEnabled()) {
+        marketData = await getMarketDataWithIndicators(symbol);
+      } else {
+        return res.status(503).json({
+          error: "Market data service is not configured. Please contact support.",
+        });
+      }
     } catch (e) {
-      req.log.error({ err: e.message }, "FMP market data fetch failed");
+      req.log.error({ err: e.message }, "Market data fetch failed");
       return res.status(503).json({
-        error: "Unable to fetch live market data right now. Please try again in a moment.",
+        error: "Unable to fetch live market data. Please try again in a moment.",
         detail: e.message,
       });
     }
@@ -69,7 +79,24 @@ router.post("/analyze", requireUser(), async (req, res) => {
       }).where(eq(users.clerkId, userId));
     }
 
-    res.json({ analysis, marketData });
+    res.json({ analysis, marketData: {
+      symbol: marketData.symbol,
+      price: marketData.price,
+      bid: marketData.bid,
+      ask: marketData.ask,
+      change: marketData.change,
+      rsi: marketData.rsi,
+      macd: { h1: marketData.macd?.h1 },
+      bb: marketData.bb,
+      atr: marketData.atr,
+      stoch: marketData.stoch,
+      ema: marketData.ema,
+      candles: {
+        h1: marketData.candles?.h1?.slice(-5),
+        h4: marketData.candles?.h4?.slice(-3),
+      },
+      source: marketData.source,
+    }});
   } catch (err) {
     req.log.error({ err }, "Signal analysis failed");
     res.status(500).json({ error: "Signal analysis failed: " + (err?.message || "unknown error") });
@@ -99,8 +126,9 @@ router.post("/:signalId/outcome", requireUser(), async (req, res) => {
       updatedAt: new Date(),
     }).where(eq(trades.id, signalId)).returning();
 
+    let newTpCount = user.tpSignalsSinceLastShare || 0;
     if (outcome === "tp_hit") {
-      const newTpCount = (user.tpSignalsSinceLastShare || 0) + 1;
+      newTpCount = newTpCount + 1;
       await db.update(users).set({
         tpSignalsSinceLastShare: newTpCount,
         totalTrades: user.totalTrades + 1,
@@ -113,15 +141,16 @@ router.post("/:signalId/outcome", requireUser(), async (req, res) => {
       }).where(eq(users.clerkId, userId));
     }
 
-    const shareRequired = outcome === "tp_hit" && (user.tpSignalsSinceLastShare + 1) >= TP_SIGNALS_BEFORE_SHARE;
+    const shareRequired = newTpCount >= TP_SIGNALS_BEFORE_SHARE;
 
     res.json({
       signal: updated,
       shareRequired,
+      tpCount: newTpCount,
       message: shareRequired
-        ? "Congratulations! 3 signals hit TP. Please send GhostAgent's share to continue."
+        ? `🎯 ${TP_SIGNALS_BEFORE_SHARE} signals hit TP! Please send GhostAgent's 20% share to continue.`
         : outcome === "tp_hit"
-        ? "Great job! TP hit recorded."
+        ? "Take Profit hit! Well done."
         : "Signal outcome recorded.",
     });
   } catch (err) {
@@ -169,11 +198,15 @@ router.post("/save", requireUser(), async (req, res) => {
     const [user] = await db.select().from(users).where(eq(users.clerkId, userId));
     if (!user) return res.status(404).json({ error: "User not found" });
 
+    if (Number(user.balance) < MIN_BALANCE_USD) {
+      return res.status(402).json({ error: `Minimum $${MIN_BALANCE_USD} GhostAgent balance required to save signals.` });
+    }
+
     const shareRequired = user.tpSignalsSinceLastShare >= TP_SIGNALS_BEFORE_SHARE;
     if (shareRequired) {
       return res.status(402).json({
         error: "share_required",
-        message: "Please send GhostAgent's share before saving more signals.",
+        message: "Please send GhostAgent's 20% share before saving more signals.",
       });
     }
 
@@ -195,7 +228,16 @@ router.post("/save", requireUser(), async (req, res) => {
       aiConfidence: String(analysis.confidence),
       forecast: analysis.forecast,
       keyLevels: analysis.keyLevels,
-      forecastData: { model: analysis.model, provider: analysis.provider },
+      forecastData: {
+        model: analysis.model,
+        provider: analysis.provider,
+        confluenceScore: analysis.confluenceScore,
+        confluenceFactors: analysis.confluenceFactors,
+        session: analysis.session,
+        invalidationLevel: analysis.invalidationLevel,
+      },
+      confluenceScore: analysis.confluenceScore || 0,
+      session: analysis.session,
     }).returning();
 
     res.status(201).json({ signal });
@@ -231,6 +273,7 @@ router.get("/status", requireUser(), async (req, res) => {
 
     const shareRequired = user.tpSignalsSinceLastShare >= TP_SIGNALS_BEFORE_SHARE;
     const tpUntilShare = shareRequired ? 0 : TP_SIGNALS_BEFORE_SHARE - (user.tpSignalsSinceLastShare || 0);
+    const hasMinBalance = Number(user.balance) >= MIN_BALANCE_USD;
 
     res.json({
       balance: user.balance,
@@ -240,7 +283,13 @@ router.get("/status", requireUser(), async (req, res) => {
       tpSignalsSinceLastShare: user.tpSignalsSinceLastShare || 0,
       tpUntilShare,
       shareRequired,
-      canGetSignal: !shareRequired,
+      hasMinBalance,
+      canGetSignal: !shareRequired && hasMinBalance,
+      ghostSharePercent: 20,
+      userSharePercent: 80,
+      hasMt5: !!user.mt5AccountId,
+      mt5Login: user.mt5Login,
+      mt5Server: user.mt5Server,
     });
   } catch (err) {
     req.log.error({ err }, "Signal status failed");
