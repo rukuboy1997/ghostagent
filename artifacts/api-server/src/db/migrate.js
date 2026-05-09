@@ -22,6 +22,10 @@ export async function runMigrations() {
         mt5_password VARCHAR(255),
         mt5_server VARCHAR(255),
         mt5_account_id VARCHAR(255),
+        scan_enabled BOOLEAN NOT NULL DEFAULT false,
+        scan_interval_minutes INTEGER NOT NULL DEFAULT 15,
+        scan_session_filter VARCHAR(30) NOT NULL DEFAULT 'major',
+        last_scanned_at TIMESTAMP,
         created_at TIMESTAMP NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMP NOT NULL DEFAULT NOW()
       );
@@ -76,6 +80,17 @@ export async function runMigrations() {
       );
     `);
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS _trading_watchlist (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES _trading_users(id),
+        symbol VARCHAR(50) NOT NULL,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        UNIQUE(user_id, symbol)
+      );
+    `);
+
     const alterStatements = [
       `ALTER TABLE _trading_users ADD COLUMN IF NOT EXISTS trading_balance DECIMAL(18,2) DEFAULT 50`,
       `ALTER TABLE _trading_users ADD COLUMN IF NOT EXISTS tp_signals_since_last_share INTEGER NOT NULL DEFAULT 0`,
@@ -85,6 +100,10 @@ export async function runMigrations() {
       `ALTER TABLE _trading_users ADD COLUMN IF NOT EXISTS mt5_password VARCHAR(255)`,
       `ALTER TABLE _trading_users ADD COLUMN IF NOT EXISTS mt5_server VARCHAR(255)`,
       `ALTER TABLE _trading_users ADD COLUMN IF NOT EXISTS mt5_account_id VARCHAR(255)`,
+      `ALTER TABLE _trading_users ADD COLUMN IF NOT EXISTS scan_enabled BOOLEAN NOT NULL DEFAULT false`,
+      `ALTER TABLE _trading_users ADD COLUMN IF NOT EXISTS scan_interval_minutes INTEGER NOT NULL DEFAULT 15`,
+      `ALTER TABLE _trading_users ADD COLUMN IF NOT EXISTS scan_session_filter VARCHAR(30) NOT NULL DEFAULT 'major'`,
+      `ALTER TABLE _trading_users ADD COLUMN IF NOT EXISTS last_scanned_at TIMESTAMP`,
       `ALTER TABLE _trading_trades ADD COLUMN IF NOT EXISTS entry_price DECIMAL(18,8)`,
       `ALTER TABLE _trading_trades ADD COLUMN IF NOT EXISTS stop_loss DECIMAL(18,8)`,
       `ALTER TABLE _trading_trades ADD COLUMN IF NOT EXISTS take_profit DECIMAL(18,8)`,

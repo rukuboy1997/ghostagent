@@ -6,6 +6,7 @@ import { CLERK_PROXY_PATH, clerkProxyMiddleware } from "./middlewares/clerkProxy
 import router from "./routes/index.js";
 import { logger } from "./lib/logger.js";
 import { runMigrations } from "./db/migrate.js";
+import { startAutoScanner } from "./lib/autoScan.js";
 
 const app = express();
 
@@ -13,18 +14,13 @@ app.use(
   pinoHttp({
     logger,
     serializers: {
-      req(req) {
-        return { id: req.id, method: req.method, url: req.url?.split("?")[0] };
-      },
-      res(res) {
-        return { statusCode: res.statusCode };
-      },
+      req(req) { return { id: req.id, method: req.method, url: req.url?.split("?")[0] }; },
+      res(res) { return { statusCode: res.statusCode }; },
     },
   })
 );
 
 app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
-
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -39,6 +35,8 @@ if (clerkSK) {
 
 app.use("/api", router);
 
-runMigrations().catch((err) => logger.error({ err }, "Startup migration failed"));
+runMigrations()
+  .then(() => startAutoScanner())
+  .catch((err) => logger.error({ err }, "Startup failed"));
 
 export default app;
