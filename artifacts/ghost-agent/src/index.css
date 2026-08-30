@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
@@ -67,103 +68,81 @@
 }
 
 :root {
-  --background: 228 60% 5%;
-  --foreground: 0 0% 98%;
-  
-  --card: 228 50% 8%;
-  --card-foreground: 0 0% 98%;
-  --card-border: 190 100% 50% / 0.1;
-  
-  --popover: 228 50% 8%;
-  --popover-foreground: 0 0% 98%;
-  --popover-border: 190 100% 50% / 0.1;
-  
-  --primary: 190 100% 50%;
-  --primary-foreground: 228 60% 5%;
-  
-  --secondary: 272 60% 46%;
-  --secondary-foreground: 0 0% 98%;
-  
-  --muted: 228 30% 15%;
-  --muted-foreground: 228 10% 60%;
-  
-  --accent: 190 100% 50% / 0.15;
-  --accent-foreground: 190 100% 50%;
-  
-  --destructive: 0 84% 60%;
-  --destructive-foreground: 0 0% 98%;
-  
-  --border: 190 100% 50% / 0.2;
-  --input: 190 100% 50% / 0.2;
-  --ring: 190 100% 50%;
-  
-  --sidebar: 228 60% 5%;
-  --sidebar-foreground: 0 0% 98%;
-  --sidebar-border: 190 100% 50% / 0.2;
-  --sidebar-primary: 190 100% 50%;
-  --sidebar-primary-foreground: 228 60% 5%;
-  --sidebar-accent: 190 100% 50% / 0.15;
-  --sidebar-accent-foreground: 190 100% 50%;
-  --sidebar-ring: 190 100% 50%;
-  
-  --chart-1: 190 100% 50%;
-  --chart-2: 272 60% 46%;
-  --chart-3: 142 71% 45%;
-  --chart-4: 43 74% 66%;
-  --chart-5: 0 84% 60%;
-  
-  --radius: 0rem;
-  
-  --app-font-sans: 'Inter', sans-serif;
-  --app-font-serif: Georgia, serif;
-  --app-font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --background: 220 28% 7%;
+  --foreground: 210 20% 94%;
+  --card: 220 25% 10%;
+  --card-foreground: 210 20% 94%;
+  --card-border: 216 20% 22%;
+  --popover: 220 25% 10%;
+  --popover-foreground: 210 20% 94%;
+  --popover-border: 216 20% 22%;
+  --primary: 42 93% 62%;
+  --primary-foreground: 220 28% 7%;
+  --secondary: 200 16% 18%;
+  --secondary-foreground: 210 20% 94%;
+  --muted: 220 20% 15%;
+  --muted-foreground: 215 13% 58%;
+  --accent: 42 93% 62% / 0.14;
+  --accent-foreground: 42 93% 62%;
+  --destructive: 4 76% 61%;
+  --destructive-foreground: 210 20% 94%;
+  --border: 216 20% 22%;
+  --input: 216 20% 24%;
+  --ring: 42 93% 62%;
+  --sidebar: 222 30% 8%;
+  --sidebar-foreground: 210 20% 94%;
+  --sidebar-border: 216 20% 20%;
+  --sidebar-primary: 42 93% 62%;
+  --sidebar-primary-foreground: 220 28% 7%;
+  --sidebar-accent: 42 93% 62% / 0.1;
+  --sidebar-accent-foreground: 42 93% 62%;
+  --sidebar-ring: 42 93% 62%;
+  --chart-1: 42 93% 62%;
+  --chart-2: 174 56% 48%;
+  --chart-3: 4 76% 61%;
+  --chart-4: 210 20% 68%;
+  --chart-5: 28 80% 58%;
+  --radius: 0.55rem;
+  --app-font-sans: 'Manrope', sans-serif;
+  --app-font-serif: 'Space Grotesk', sans-serif;
+  --app-font-mono: 'DM Mono', monospace;
 }
 
-.dark {
-  --background: 228 60% 5%;
-  --foreground: 0 0% 98%;
-  
-  --card: 228 50% 8%;
-  --card-foreground: 0 0% 98%;
-  --card-border: 190 100% 50% / 0.1;
-  
-  --popover: 228 50% 8%;
-  --popover-foreground: 0 0% 98%;
-  --popover-border: 190 100% 50% / 0.1;
-  
-  --primary: 190 100% 50%;
-  --primary-foreground: 228 60% 5%;
-  
-  --secondary: 272 60% 46%;
-  --secondary-foreground: 0 0% 98%;
-  
-  --muted: 228 30% 15%;
-  --muted-foreground: 228 10% 60%;
-  
-  --accent: 190 100% 50% / 0.15;
-  --accent-foreground: 190 100% 50%;
-  
-  --destructive: 0 84% 60%;
-  --destructive-foreground: 0 0% 98%;
-  
-  --border: 190 100% 50% / 0.2;
-  --input: 190 100% 50% / 0.2;
-  --ring: 190 100% 50%;
-  
-  --sidebar: 228 60% 5%;
-  --sidebar-foreground: 0 0% 98%;
-  --sidebar-border: 190 100% 50% / 0.2;
-  --sidebar-primary: 190 100% 50%;
-  --sidebar-primary-foreground: 228 60% 5%;
-  --sidebar-accent: 190 100% 50% / 0.15;
-  --sidebar-accent-foreground: 190 100% 50%;
-  --sidebar-ring: 190 100% 50%;
-  
-  --chart-1: 190 100% 50%;
-  --chart-2: 272 60% 46%;
-  --chart-3: 142 71% 45%;
-  --chart-4: 43 74% 66%;
-  --chart-5: 0 84% 60%;
+.dark { 
+  --background: 220 28% 7%;
+  --foreground: 210 20% 94%;
+  --card: 220 25% 10%;
+  --card-foreground: 210 20% 94%;
+  --card-border: 216 20% 22%;
+  --popover: 220 25% 10%;
+  --popover-foreground: 210 20% 94%;
+  --popover-border: 216 20% 22%;
+  --primary: 42 93% 62%;
+  --primary-foreground: 220 28% 7%;
+  --secondary: 200 16% 18%;
+  --secondary-foreground: 210 20% 94%;
+  --muted: 220 20% 15%;
+  --muted-foreground: 215 13% 58%;
+  --accent: 42 93% 62% / 0.14;
+  --accent-foreground: 42 93% 62%;
+  --destructive: 4 76% 61%;
+  --destructive-foreground: 210 20% 94%;
+  --border: 216 20% 22%;
+  --input: 216 20% 24%;
+  --ring: 42 93% 62%;
+  --sidebar: 222 30% 8%;
+  --sidebar-foreground: 210 20% 94%;
+  --sidebar-border: 216 20% 20%;
+  --sidebar-primary: 42 93% 62%;
+  --sidebar-primary-foreground: 220 28% 7%;
+  --sidebar-accent: 42 93% 62% / 0.1;
+  --sidebar-accent-foreground: 42 93% 62%;
+  --sidebar-ring: 42 93% 62%;
+  --chart-1: 42 93% 62%;
+  --chart-2: 174 56% 48%;
+  --chart-3: 4 76% 61%;
+  --chart-4: 210 20% 68%;
+  --chart-5: 28 80% 58%;
 }
 
 @layer base {
@@ -172,6 +151,7 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--app-font-sans);
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
@@ -221,18 +201,14 @@
   100% { clip-path: inset(5% 0 80% 0); }
 }
 
-.scanlines {
-  background: linear-gradient(
-    to bottom,
-    rgba(255,255,255,0),
-    rgba(255,255,255,0) 50%,
-    rgba(0,0,0,0.2) 50%,
-    rgba(0,0,0,0.2)
-  );
-  background-size: 100% 4px;
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  pointer-events: none;
-  z-index: 50;
-  opacity: 0.3;
+.scanlines { display: none; }
+.font-display { font-family: var(--app-font-serif); }
+.font-data { font-family: var(--app-font-mono); }
+.terminal-grid {
+  background-image: linear-gradient(hsl(216 20% 22% / .18) 1px, transparent 1px), linear-gradient(90deg, hsl(216 20% 22% / .18) 1px, transparent 1px);
+  background-size: 32px 32px;
 }
+.signal-up { color: hsl(174 56% 48%); }
+.signal-down { color: hsl(4 76% 61%); }
+.data-pulse { animation: data-pulse 2.4s ease-in-out infinite; }
+@keyframes data-pulse { 0%,100% { opacity: .55; } 50% { opacity: 1; } }

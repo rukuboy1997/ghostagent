@@ -3,95 +3,96 @@ import { requireAuth, getAuth } from "@clerk/express";
 import { eq, desc } from "drizzle-orm";
 import { db, users, trades } from "../db/index.js";
 import { analyzeMarket } from "../lib/cloudflare-ai.js";
-import { getMarketDataWithIndicators, placeTrade, isMetaApiEnabled, getAccountStatus } from "../lib/metaapi.js";
+import {
+  chooseOptionContract,
+  getAccount,
+  getMarketDataWithIndicators,
+  getOpenPositions,
+  placeOptionsOrder,
+} from "../lib/alpaca.js";
 import { emitSignalNotification } from "../lib/notifications.js";
 
 const router = Router();
+const MIN_CONFIDENCE = 78;
+const MIN_CONFLUENCE = 6;
+const MAX_RISK_PERCENT = 1;
 
-const USER_SHARE = 0.80;
-const GHOST_SHARE = 0.20;
-const TRADES_BEFORE_SHARE_REQUIRED = 3;
-const MIN_BALANCE_USD = 10;
+async function getUser(clerkId) {
+  const [user] = await db.select().from(users).where(eq(users.clerkId, clerkId));
+  return user;
+}
 
-function buildFallbackMarketData(symbol) {
-  const s = symbol.toUpperCase().replace("/", "");
-  const priceMap = {
-    EURUSD: 1.0850, GBPUSD: 1.2750, USDJPY: 149.50, USDCAD: 1.3650,
-    AUDUSD: 0.6520, USDCHF: 0.8980, NZDUSD: 0.5990, GBPJPY: 190.80,
-    EURJPY: 162.20, EURGBP: 0.8510, XAUUSD: 2350.00, XAGUSD: 28.50,
-    BTCUSD: 67000.00, ETHUSD: 3200.00,
-  };
-  const price = priceMap[s] || 1.0000;
-  const spread = s.includes("JPY") ? 0.015 : s.includes("XAU") ? 0.5 : 0.00015;
-  return {
-    symbol, price, bid: price - spread, ask: price + spread, change: "0",
-    candles: { h1: [], h4: [], d1: [] },
-    rsi: { h1: null, h4: null, d1: null },
-    macd: { h1: null, h4: null },
-    bb: { h1: null }, atr: null, stoch: null,
-    ema: { ema20: null, ema50: null, ema200: null },
-    source: "fallback",
-  };
+function validateAnalysis(analysis) {
+  if (!analysis || !["BUY_CALL", "BUY_PUT"].includes(analysis.decision)) {
+    return "GhostAgent is holding because no options setup qualified.";
+  }
+  if (Number(analysis.confidence) < MIN_CONFIDENCE) {
+    return `Confidence (${analysis.confidence}%) is below the ${MIN_CONFIDENCE}% execution gate.`;
+  }
+  if (Number(analysis.confluenceScore) < MIN_CONFLUENCE) {
+    return `Confluence (${analysis.confluenceScore}/8) is below the ${MIN_CONFLUENCE}/8 execution gate.`;
+  }
+  return null;
+}
+
+function calculateQty(account, contract) {
+  const premium = Number(contract?.premium || 0);
+  const contractSize = Number(contract?.contractSize || 100);
+  if (!premium) return 1;
+  const riskBudget = Number(account.equity || account.buyingPower || 100000) * (MAX_RISK_PERCENT / 100);
+  return Math.min(3, Math.max(1, Math.floor(riskBudget / (premium * contractSize))));
 }
 
 router.post("/analyze", requireAuth(), async (req, res) => {
   try {
     const { userId } = getAuth(req);
-    const { symbol, accountBalance } = req.body;
+    const symbol = String(req.body.symbol || "").toUpperCase();
     if (!symbol) return res.status(400).json({ error: "symbol is required" });
 
-    const [user] = await db.select().from(users).where(eq(users.clerkId, userId));
+    const user = await getUser(userId);
     if (!user) return res.status(404).json({ error: "User not found" });
-    if (Number(user.balance) < MIN_BALANCE_USD) {
-      return res.status(402).json({ error: `Insufficient GhostAgent balance. Please deposit at least $${MIN_BALANCE_USD} to start.` });
+
+    const account = await getAccount();
+    const accountBalance = Number(req.body.accountBalance) || account.equity;
+    if (!accountBalance || accountBalance < 1000) {
+      return res.status(400).json({ error: "Alpaca paper account equity must be at least $1,000." });
     }
 
-    const shareRequired = user.tradesSinceLastShare >= TRADES_BEFORE_SHARE_REQUIRED && user.totalTrades > 0;
-    if (shareRequired) {
-      return res.status(402).json({
-        error: "share_required",
-        message: `You've had ${TRADES_BEFORE_SHARE_REQUIRED} successful trades. Please send GhostAgent's 20% share to continue.`,
-        tradesCount: user.tradesSinceLastShare,
-      });
+    const marketData = await getMarketDataWithIndicators(symbol);
+    const analysis = await analyzeMarket({ symbol, marketData, accountBalance });
+    let optionsContract = null;
+    if (analysis.decision !== "HOLD") {
+      optionsContract = await chooseOptionContract(symbol, analysis.decision, marketData.price);
+      analysis.optionsContract = optionsContract;
+      analysis.recommendedQty = calculateQty(account, optionsContract);
     }
 
-    const tradingBal = accountBalance
-      ? parseFloat(accountBalance)
-      : parseFloat(user.tradingBalance || 50);
-
-    if (tradingBal < 10) {
-      return res.status(400).json({ error: "Trading account balance must be at least $10 for risk management." });
-    }
-
-    // Fetch live data from connected MT5 account via MetaAPI
-    let marketData = buildFallbackMarketData(symbol);
-
-    if (isMetaApiEnabled() && user.mt5AccountId && !user.mt5AccountId.startsWith("demo-")) {
-      try {
-        const status = await getAccountStatus(user.mt5AccountId);
-        if (status.connectionStatus === "CONNECTED") {
-          marketData = await getMarketDataWithIndicators(user.mt5AccountId, symbol);
-        }
-      } catch (e) {
-        req.log.warn({ err: e.message }, "MetaAPI data fetch failed, using fallback prices");
-      }
-    }
-
-    const analysis = await analyzeMarket({ symbol, marketData, accountBalance: tradingBal });
-
-    if (analysis.decision !== "HOLD" && analysis.confidence >= 72) {
+    if (analysis.decision !== "HOLD" && analysis.confidence >= MIN_CONFIDENCE) {
       emitSignalNotification(userId, {
-        symbol, decision: analysis.decision, confidence: analysis.confidence,
-        confluenceScore: analysis.confluenceScore, entryPrice: analysis.entryPrice,
-        stopLoss: analysis.stopLoss, takeProfit: analysis.takeProfit, session: analysis.session,
-        source: "auto-trade",
+        symbol,
+        decision: analysis.decision,
+        confidence: analysis.confidence,
+        confluenceScore: analysis.confluenceScore,
+        optionSymbol: optionsContract?.symbol,
+        source: "alpaca-options-agent",
       });
     }
 
-    res.json({ analysis, marketData });
+    await db.update(users).set({
+      tradingBalance: String(account.equity),
+      alpacaAccountId: account.id,
+      alpacaAccountNumber: account.accountNumber,
+      alpacaOptionsLevel: account.optionsTradingLevel,
+      updatedAt: new Date(),
+    }).where(eq(users.id, user.id));
+
+    res.json({ analysis, marketData, account, optionsContract });
   } catch (err) {
-    req.log.error({ err }, "Trade analysis failed");
-    res.status(500).json({ error: "Analysis failed: " + (err?.message || "unknown error") });
+    req.log.error({ err }, "Options analysis failed");
+    res.status(err.status === 401 || err.status === 403 ? 502 : 500).json({
+      error: err.message || "Options analysis failed",
+      requestId: err.requestId,
+    });
   }
 });
 
@@ -99,138 +100,107 @@ router.post("/execute", requireAuth(), async (req, res) => {
   try {
     const { userId } = getAuth(req);
     const { symbol, analysis } = req.body;
-
-    if (!symbol || !analysis) return res.status(400).json({ error: "symbol and analysis are required" });
-
-    const [user] = await db.select().from(users).where(eq(users.clerkId, userId));
+    const user = await getUser(userId);
     if (!user) return res.status(404).json({ error: "User not found" });
 
-    if (Number(user.balance) < MIN_BALANCE_USD) {
-      return res.status(402).json({ error: `Insufficient GhostAgent balance. Please deposit at least $${MIN_BALANCE_USD}.` });
-    }
+    const gateError = validateAnalysis(analysis);
+    if (gateError) return res.json({ skipped: true, message: gateError, analysis });
 
-    if (!user.mt5AccountId) {
-      return res.status(400).json({ error: "No MT5 account connected. Connect your MT5 account first." });
-    }
-
-    const shareRequired = user.tradesSinceLastShare >= TRADES_BEFORE_SHARE_REQUIRED && user.totalTrades > 0;
-    if (shareRequired) {
-      return res.status(402).json({
-        error: "share_required",
-        message: `You've had ${TRADES_BEFORE_SHARE_REQUIRED} successful trades. Please send GhostAgent's 20% share to continue trading.`,
-        tradesCount: user.tradesSinceLastShare,
-      });
-    }
-
-    if (analysis.decision === "HOLD") {
-      return res.json({ skipped: true, message: "GhostAgent decided to HOLD — market conditions are not optimal. No trade placed.", analysis });
-    }
-
-    if (analysis.confidence < 72) {
-      return res.json({ skipped: true, message: `Signal confidence (${analysis.confidence}%) below threshold. GhostAgent only executes at 72%+ confidence. No trade placed.`, analysis });
-    }
-
-    let mt5Result = null;
-    let mt5TicketId = null;
-
-    if (isMetaApiEnabled() && !user.mt5AccountId.startsWith("demo-")) {
-      const status = await getAccountStatus(user.mt5AccountId);
-      if (status.connectionStatus !== "CONNECTED") {
-        return res.status(503).json({ error: "MT5 account is not connected. Please check your account status." });
-      }
-      mt5Result = await placeTrade(user.mt5AccountId, {
-        symbol, type: analysis.decision,
-        volume: analysis.recommendedLotSize || 0.01,
-        stopLoss: analysis.stopLoss,
-        takeProfit: analysis.takeProfit,
-      });
-      mt5TicketId = mt5Result?.orderId || mt5Result?.positionId || null;
-    } else {
-      mt5TicketId = `demo-${Date.now()}`;
-    }
+    const account = await getAccount();
+    const contract = analysis.optionsContract ||
+      await chooseOptionContract(String(symbol).toUpperCase(), analysis.decision, Number(analysis.entryPrice));
+    const qty = calculateQty(account, contract);
+    const order = await placeOptionsOrder({
+      symbol: contract.symbol,
+      qty,
+      side: "buy",
+      positionIntent: "buy_to_open",
+    });
 
     const [trade] = await db.insert(trades).values({
       userId: user.id,
-      symbol,
+      symbol: String(symbol).toUpperCase(),
       type: analysis.decision,
       entryPrice: String(analysis.entryPrice || 0),
       stopLoss: String(analysis.stopLoss || 0),
       takeProfit: String(analysis.takeProfit || 0),
-      stopLossPips: String(analysis.stopLossPips || 0),
-      takeProfitPips: String(analysis.takeProfitPips || 0),
-      riskRewardRatio: String(analysis.riskRewardRatio || "N/A"),
-      recommendedLotSize: String(analysis.recommendedLotSize || 0.01),
-      riskPercent: String(analysis.riskPercent || 1),
-      accountBalanceAtSignal: String(analysis.accountBalance || user.tradingBalance || 50),
+      riskRewardRatio: String(analysis.riskRewardRatio || 0),
+      recommendedLotSize: String(qty),
+      riskPercent: String(MAX_RISK_PERCENT),
+      accountBalanceAtSignal: String(account.equity),
       signalStatus: "active",
       aiReasoning: analysis.reasoning,
       aiConfidence: String(analysis.confidence),
       forecast: analysis.forecast,
       keyLevels: analysis.keyLevels,
-      forecastData: { model: analysis.model, provider: analysis.provider, confluenceScore: analysis.confluenceScore, mt5Ticket: mt5TicketId },
-      mt5TicketId: mt5TicketId ? String(mt5TicketId) : null,
+      forecastData: {
+        model: analysis.model,
+        provider: analysis.provider,
+        strategy: analysis.strategy,
+        confluenceScore: analysis.confluenceScore,
+        confluenceFactors: analysis.confluenceFactors,
+        invalidationLevel: analysis.invalidationLevel,
+        alpacaRequestId: order._requestId || null,
+      },
+      alpacaOrderId: order.id ? String(order.id) : null,
+      optionSymbol: contract.symbol,
+      optionType: contract.optionType,
+      optionStrike: String(contract.strike),
+      optionExpiration: contract.expiration ? new Date(contract.expiration) : null,
+      optionPremium: contract.premium ? String(contract.premium) : null,
       confluenceScore: analysis.confluenceScore || 0,
       session: analysis.session,
     }).returning();
 
     await db.update(users).set({
-      totalTrades: user.totalTrades + 1,
-      tradesSinceLastShare: user.tradesSinceLastShare + 1,
+      totalTrades: (user.totalTrades || 0) + 1,
       updatedAt: new Date(),
-    }).where(eq(users.clerkId, userId));
+    }).where(eq(users.id, user.id));
 
-    res.status(201).json({ trade, mt5Result, analysis, mt5TicketId });
+    res.status(201).json({
+      trade,
+      order,
+      analysis,
+      optionSymbol: contract.symbol,
+      quantity: qty,
+      paper: true,
+    });
   } catch (err) {
-    req.log.error({ err }, "Trade execution failed");
-    res.status(500).json({ error: err?.message || "Trade execution failed" });
+    req.log.error({ err }, "Options order execution failed");
+    res.status(err.status === 403 || err.status === 422 ? 422 : 500).json({
+      error: err.message || "Paper options order failed",
+      requestId: err.requestId,
+    });
   }
 });
 
 router.post("/:tradeId/close", requireAuth(), async (req, res) => {
   try {
     const { userId } = getAuth(req);
-    const tradeId = parseInt(req.params.tradeId);
-    const { outcome } = req.body;
-
-    const [user] = await db.select().from(users).where(eq(users.clerkId, userId));
+    const tradeId = Number(req.params.tradeId);
+    const outcome = String(req.body.outcome || "");
+    const user = await getUser(userId);
     const [trade] = await db.select().from(trades).where(eq(trades.id, tradeId));
-
-    if (!trade || trade.userId !== user.id) return res.status(404).json({ error: "Trade not found" });
-    if (trade.signalStatus !== "active") return res.status(400).json({ error: "Trade already closed" });
+    if (!user || !trade || trade.userId !== user.id) return res.status(404).json({ error: "Trade not found" });
     if (!["tp_hit", "sl_hit", "expired"].includes(outcome)) return res.status(400).json({ error: "Invalid outcome" });
-
     const [updated] = await db.update(trades).set({
       signalStatus: outcome,
       closedAt: new Date(),
       updatedAt: new Date(),
     }).where(eq(trades.id, tradeId)).returning();
-
-    if (outcome === "tp_hit") {
-      await db.update(users).set({
-        tpSignalsSinceLastShare: (user.tpSignalsSinceLastShare || 0) + 1,
-        updatedAt: new Date(),
-      }).where(eq(users.clerkId, userId));
-    }
-
-    res.json({ trade: updated, message: outcome === "tp_hit" ? "Trade closed with profit!" : "Trade closed." });
+    res.json({ trade: updated, message: "Trade journal outcome recorded." });
   } catch (err) {
-    req.log.error({ err }, "Trade close failed");
-    res.status(500).json({ error: "Failed to close trade" });
+    req.log.error({ err }, "Trade outcome failed");
+    res.status(500).json({ error: "Failed to record trade outcome" });
   }
 });
 
 router.get("/history", requireAuth(), async (req, res) => {
   try {
     const { userId } = getAuth(req);
-    const [user] = await db.select().from(users).where(eq(users.clerkId, userId));
+    const user = await getUser(userId);
     if (!user) return res.status(404).json({ error: "User not found" });
-
-    const history = await db.select().from(trades)
-      .where(eq(trades.userId, user.id))
-      .orderBy(desc(trades.createdAt))
-      .limit(50);
-
-    res.json(history);
+    res.json(await db.select().from(trades).where(eq(trades.userId, user.id)).orderBy(desc(trades.createdAt)).limit(100));
   } catch (err) {
     req.log.error({ err }, "Trade history failed");
     res.status(500).json({ error: "Failed to get trade history" });
@@ -240,32 +210,47 @@ router.get("/history", requireAuth(), async (req, res) => {
 router.get("/status", requireAuth(), async (req, res) => {
   try {
     const { userId } = getAuth(req);
-    const [user] = await db.select().from(users).where(eq(users.clerkId, userId));
+    const user = await getUser(userId);
     if (!user) return res.status(404).json({ error: "User not found" });
-
-    const shareRequired = user.tradesSinceLastShare >= TRADES_BEFORE_SHARE_REQUIRED && user.totalTrades > 0;
-    const tradesUntilShare = shareRequired ? 0 : TRADES_BEFORE_SHARE_REQUIRED - (user.tradesSinceLastShare || 0);
-
+    const account = await getAccount();
     res.json({
-      balance: user.balance,
-      currency: user.currency,
-      tradingBalance: user.tradingBalance || 50,
-      totalTrades: user.totalTrades,
-      tradesSinceLastShare: user.tradesSinceLastShare || 0,
-      tpSignalsSinceLastShare: user.tpSignalsSinceLastShare || 0,
-      shareRequired,
-      tradesUntilShare,
-      totalProfit: user.totalProfit,
-      hasMt5: !!user.mt5AccountId,
-      mt5Login: user.mt5Login,
-      mt5Server: user.mt5Server,
-      canTrade: Number(user.balance) >= MIN_BALANCE_USD && !!user.mt5AccountId && !shareRequired,
-      ghostSharePercent: GHOST_SHARE * 100,
-      userSharePercent: USER_SHARE * 100,
+      ...account,
+      totalTrades: user.totalTrades || 0,
+      tradingBalance: account.equity,
+      autoTradeEnabled: Boolean(user.autoTradeEnabled),
+      canTrade: account.status === "ACTIVE" && account.equity > 0,
+      strategy: "Options Alpha / long premium",
+      maxRiskPercent: MAX_RISK_PERCENT,
+      confidenceGate: MIN_CONFIDENCE,
+      confluenceGate: MIN_CONFLUENCE,
     });
   } catch (err) {
     req.log.error({ err }, "Trading status failed");
-    res.status(500).json({ error: "Internal server error" });
+    res.status(502).json({ error: err.message || "Unable to read trading status" });
+  }
+});
+
+router.get("/positions", requireAuth(), async (req, res) => {
+  try {
+    res.json(await getOpenPositions());
+  } catch (err) {
+    req.log.error({ err }, "Options positions failed");
+    res.status(502).json({ error: err.message || "Unable to read options positions" });
+  }
+});
+
+router.patch("/agent", requireAuth(), async (req, res) => {
+  try {
+    const { userId } = getAuth(req);
+    if (typeof req.body.enabled !== "boolean") return res.status(400).json({ error: "enabled must be boolean" });
+    const [updated] = await db.update(users)
+      .set({ autoTradeEnabled: req.body.enabled, updatedAt: new Date() })
+      .where(eq(users.clerkId, userId))
+      .returning({ autoTradeEnabled: users.autoTradeEnabled });
+    res.json(updated || { autoTradeEnabled: req.body.enabled });
+  } catch (err) {
+    req.log.error({ err }, "Agent toggle failed");
+    res.status(500).json({ error: "Failed to update agent mode" });
   }
 });
 

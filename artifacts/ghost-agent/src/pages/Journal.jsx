@@ -207,7 +207,7 @@ function JournalEntry({ signal, onSaveNote, onOutcome }) {
           <div className="text-[10px] text-muted-foreground/40 flex gap-4">
             <span>{new Date(signal.createdAt).toLocaleString()}</span>
             {signal.session && <span>Session: {signal.session}</span>}
-            {signal.mt5TicketId && <span>Ticket: {signal.mt5TicketId}</span>}
+            {signal.alpacaOrderId && <span>Alpaca order: {signal.alpacaOrderId}</span>}
           </div>
         </div>
       )}

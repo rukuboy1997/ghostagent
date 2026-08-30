@@ -1,71 +1,62 @@
-# GhostAgent — AI Trading Signal SaaS
+# GhostAgent — Alpaca Options Alpha Agent
 
 ## Overview
 
-GhostAgent is an AI-powered trading signal platform. Users sign in, enter their broker account balance, select a forex/commodity/crypto pair, and receive high-precision BUY/SELL signals with full risk management (entry, stop loss, take profit, lot size). The AI brain is DeepSeek-R1 via Cloudflare Workers AI, with real market data from Alpha Vantage (RSI, MACD, OHLCV candles). After every 3 signals that reach Take Profit, users send GhostAgent's share before receiving more signals.
+GhostAgent is an autonomous AI options agent for Alpaca's paper-trading environment. It uses DeepSeek-R1 through Cloudflare Workers AI with Alpaca historical bars and options contracts to find high-conviction long call/put setups, enforce risk gates, optionally place capped paper orders, and explain every decision for a hackathon demo.
 
 ## Tech Stack
 
-- **Frontend**: React 19 + Vite + Tailwind v4 (dark cyberpunk theme), Clerk auth, TanStack Query, Flutterwave payments
-- **Backend**: Express.js + Clerk middleware, Neon PostgreSQL, Drizzle ORM
-- **AI**: Cloudflare Workers AI (`@cf/deepseek-ai/deepseek-r1-distill-qwen-32b` — DeepSeek-R1)
-- **Market Data**: Alpha Vantage API (forex, commodities, crypto — price, RSI, MACD, OHLCV)
-- **Payments**: Flutterwave (deposits + Ghost Share)
+- Frontend: React 19 + Vite + Tailwind v4, Clerk auth, TanStack Query
+- Backend: Express.js + Clerk middleware, PostgreSQL, Drizzle ORM
+- AI: Cloudflare Workers AI (`@cf/deepseek-ai/deepseek-r1-distill-qwen-32b`)
+- Market data: Alpaca Market Data API (historical IEX bars and latest trades)
+- Execution: Alpaca Trading API v2 (paper account, options contracts, orders, positions)
+
+## Product Contract
+
+- Alpaca paper-account equity drives position sizing; the hackathon account target is $100,000.
+- AI returns `BUY_CALL`, `BUY_PUT`, or `HOLD` with a thesis, levels, confidence, and an 8-factor confluence score.
+- The server selects a real active Alpaca option contract; the model never invents a contract symbol.
+- Only long-premium options orders are supported. The autonomous scanner is capped at 1% account risk and 3 contracts.
+- Execution requires 78% confidence, 6/8 confluence, an active paper account, buying power, and no unavailable contract.
+- The app fails closed when Alpaca or the AI engine is unavailable; it never fabricates a paper order.
 
 ## Project Structure
 
 ```
 artifacts/
-  ghost-agent/    # React frontend (port from $PORT)
-    src/
-      pages/      Dashboard.jsx, Signals.jsx, Account.jsx
-      components/ Layout.jsx + ui/ (shadcn components)
-      lib/        api.js
-  api-server/     # Express backend (port 8080)
-    src/
-      routes/     health, auth, signals (also mounted at /trading), payments
-      lib/        cloudflare-ai.js, alphavantage.js, logger.js
-      db/         schema (users, trades, deposits), index.js, migrate.js
-      middlewares/ clerkProxyMiddleware.js
+  ghost-agent/    # React frontend
+    src/pages/    # dashboard, research lab, execution, Alpaca, watchlist, journal
+  api-server/     # Express API
+    src/routes/    # auth, signals, trading, Alpaca, watchlist
+    src/lib/       # alpaca adapter, autonomous scanner, AI adapter, logger
+    src/db/        # schema, index, migrations
 ```
 
-## Key Business Logic
+## Supported Underlyings
 
-- Users enter their **trading account balance** (their broker balance) for lot size/risk calculation
-- AI generates BUY/SELL/HOLD signals with entry, SL, TP, lot size, risk% based on 1-2% account risk
-- **Signal Tracking**: Users mark each signal as TP Hit, SL Hit, or Expired
-- **Ghost Share Gate**: After 3 signals reach TP, `shareRequired=true` blocks new signals until share is paid
-- **Trading Journal**: Users can add notes to each signal for their own records
-- Alpha Vantage provides real market data: OHLCV candles, RSI(14), MACD
-- Fallback signal generation when Cloudflare AI or Alpha Vantage not configured
-
-## Supported Markets
-
-- **Forex**: EUR/USD, GBP/USD, USD/JPY, USD/CAD, AUD/USD, USD/CHF, NZD/USD, GBP/JPY, EUR/JPY
-- **Commodities**: XAU/USD (Gold), XAG/USD (Silver)
-- **Crypto**: BTC/USD, ETH/USD
+SPY, QQQ, AAPL, MSFT, NVDA, AMD, TSLA, AMZN, META, and GOOGL.
 
 ## Required Environment Variables
 
 | Variable | Description |
 |---|---|
-| `POSTGRES_URL` | Neon PostgreSQL connection string |
-| `CLERK_SECRET_KEY` | Clerk backend secret (optional — falls back gracefully) |
-| `VITE_CLERK_PUBLISHABLE_KEY` | Clerk publishable key for frontend |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID for DeepSeek-R1 AI |
-| `CLOUDFLARE_API_TOKEN` | Cloudflare API token |
-| `ALPHA_VANTAGE_KEY` | Alpha Vantage API key for real market data |
+| `POSTGRES_URL` | PostgreSQL connection string |
+| `CLERK_SECRET_KEY` | Clerk backend secret |
+| `VITE_CLERK_PUBLISHABLE_KEY` | Clerk frontend publishable key |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID |
+| `CLOUDFLARE_API_TOKEN` | Cloudflare Workers AI token |
+| `ALPACA_API_KEY` | Alpaca paper API key |
+| `ALPACA_API_SECRET` | Alpaca paper API secret |
+| `ALPACA_API_ENDPOINT` | Paper trading endpoint, normally `https://paper-api.alpaca.markets/v2` |
 
-## Database Schema
+## Database
 
-- `_trading_users`: clerkId, email, balance, tradingBalance, totalTrades, tpSignalsSinceLastShare
-- `_trading_trades`: symbol, type, entryPrice, stopLoss, takeProfit, stopLossPips, takeProfitPips, riskRewardRatio, recommendedLotSize, riskPercent, accountBalanceAtSignal, signalStatus (active/tp_hit/sl_hit/expired), journalNote, aiReasoning, forecast, keyLevels
-- `_trading_deposits`: deposit and ghost_share payment records
+The trading tables retain historical compatibility columns while the active application writes Alpaca order IDs and option metadata: option symbol, type, strike, expiration, premium, risk levels, AI reasoning, confidence, and confluence factors. Migrations run automatically at startup and are non-destructive.
 
 ## Build Notes
 
-- `clerkMiddleware()` uses `CLERK_SECRET_KEY` + `VITE_CLERK_PUBLISHABLE_KEY` (fallback if no CLERK_PUBLISHABLE_KEY)
-- Health endpoint `/api/healthz` is mounted BEFORE Clerk middleware to avoid auth errors
-- DB migrations run automatically at startup via `src/db/migrate.js`
-- Alpha Vantage free tier: 25 requests/day, 5/min — indicators fetched in parallel per signal request
-- esbuild bundles the server; MetaAPI removed entirely
+- Health endpoint `/api/healthz` is mounted before Clerk middleware.
+- Alpaca requests are server-side only and use the IEX feed for historical bars.
+- The server is bundled with esbuild.
+- The old broker and market-data adapters are intentionally not part of the active application.

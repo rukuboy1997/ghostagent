@@ -9,7 +9,7 @@ import Dashboard from "@/pages/Dashboard";
 import Signals from "@/pages/Signals";
 import Account from "@/pages/Account";
 import Trading from "@/pages/Trading";
-import ConnectMT5 from "@/pages/ConnectMT5";
+import ConnectAlpaca from "@/pages/ConnectAlpaca";
 import Journal from "@/pages/Journal";
 import Watchlist from "@/pages/Watchlist";
 
@@ -57,7 +57,7 @@ function Router() {
         <Route path="/" component={() => <ProtectedRoute component={Dashboard} />} />
         <Route path="/signals" component={() => <ProtectedRoute component={Signals} />} />
         <Route path="/trading" component={() => <ProtectedRoute component={Trading} />} />
-        <Route path="/connect-mt5" component={() => <ProtectedRoute component={ConnectMT5} />} />
+        <Route path="/alpaca" component={() => <ProtectedRoute component={ConnectAlpaca} />} />
         <Route path="/watchlist" component={() => <ProtectedRoute component={Watchlist} />} />
         <Route path="/journal" component={() => <ProtectedRoute component={Journal} />} />
         <Route path="/account" component={() => <ProtectedRoute component={Account} />} />

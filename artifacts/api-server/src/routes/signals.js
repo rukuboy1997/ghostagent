@@ -3,7 +3,7 @@ import { requireUser, getAuth } from "../middlewares/authMiddleware.js";
 import { eq, desc } from "drizzle-orm";
 import { db, users, trades } from "../db/index.js";
 import { analyzeMarket } from "../lib/cloudflare-ai.js";
-import { getMarketDataWithIndicators, getMarketData, getAccountStatus, isMetaApiEnabled } from "../lib/metaapi.js";
+import { getMarketDataWithIndicators, chooseOptionContract, isAlpacaConfigured } from "../lib/alpaca.js";
 import { emitSignalNotification } from "../lib/notifications.js";
 
 const router = Router();
@@ -41,48 +41,15 @@ router.post("/analyze", requireUser(), async (req, res) => {
     const [user] = await db.select().from(users).where(eq(users.clerkId, userId));
     if (!user) return res.status(404).json({ error: "User not found. Please sign in again." });
 
-    if (Number(user.balance) < MIN_BALANCE_USD) {
-      return res.status(402).json({
-        error: "insufficient_balance",
-        message: `A minimum GhostAgent balance of $${MIN_BALANCE_USD} is required to receive signals. Please deposit to your account.`,
-      });
-    }
-
-    const shareRequired = user.tpSignalsSinceLastShare >= TP_SIGNALS_BEFORE_SHARE;
-    if (shareRequired) {
-      return res.status(402).json({
-        error: "share_required",
-        message: `You've had ${TP_SIGNALS_BEFORE_SHARE} signals reach Take Profit! Please send GhostAgent's 20% share before receiving more signals.`,
-        tpSignals: user.tpSignalsSinceLastShare,
-      });
-    }
-
     const tradingBal = accountBalance
       ? parseFloat(accountBalance)
-      : parseFloat(user.tradingBalance || 50);
+      : parseFloat(user.tradingBalance || 100000);
 
-    if (tradingBal < 10) {
-      return res.status(400).json({ error: "Trading account balance must be at least $10 for proper risk management." });
+    if (!Number.isFinite(tradingBal) || tradingBal < 1000) {
+      return res.status(400).json({ error: "Alpaca paper account equity must be at least $1,000 for risk management." });
     }
 
-    // Fetch live market data from MetaAPI if MT5 is connected, otherwise use fallback
-    let marketData = buildFallbackMarketData(symbol);
-
-    if (isMetaApiEnabled() && user.mt5AccountId) {
-      const isDemo = user.mt5AccountId.startsWith("demo-");
-      if (!isDemo) {
-        try {
-          const status = await getAccountStatus(user.mt5AccountId);
-          if (status.connectionStatus === "CONNECTED") {
-            marketData = await getMarketDataWithIndicators(user.mt5AccountId, symbol);
-          } else {
-            req.log.info({ state: status.state }, "MT5 not connected yet, using fallback prices");
-          }
-        } catch (e) {
-          req.log.warn({ err: e.message }, "MetaAPI data fetch failed, using fallback");
-        }
-      }
-    }
+    const marketData = await getMarketDataWithIndicators(symbol.toUpperCase());
 
     let analysis;
     try {
@@ -102,8 +69,14 @@ router.post("/analyze", requireUser(), async (req, res) => {
       }).where(eq(users.clerkId, userId));
     }
 
+    let optionsContract = null;
+    if (analysis.decision !== "HOLD") {
+      optionsContract = await chooseOptionContract(symbol.toUpperCase(), analysis.decision, marketData.price);
+      analysis.optionsContract = optionsContract;
+    }
+
     // Push notification if high-confidence signal
-    if (analysis.decision !== "HOLD" && analysis.confidence >= 72) {
+    if (analysis.decision !== "HOLD" && analysis.confidence >= 78) {
       emitSignalNotification(userId, {
         symbol,
         decision: analysis.decision,
@@ -118,6 +91,7 @@ router.post("/analyze", requireUser(), async (req, res) => {
 
     res.json({
       analysis,
+      optionsContract,
       marketData: {
         symbol: marketData.symbol,
         price: marketData.price,
@@ -233,14 +207,6 @@ router.post("/save", requireUser(), async (req, res) => {
     const [user] = await db.select().from(users).where(eq(users.clerkId, userId));
     if (!user) return res.status(404).json({ error: "User not found" });
 
-    if (Number(user.balance) < MIN_BALANCE_USD) {
-      return res.status(402).json({ error: `Minimum $${MIN_BALANCE_USD} GhostAgent balance required to save signals.` });
-    }
-
-    if (user.tpSignalsSinceLastShare >= TP_SIGNALS_BEFORE_SHARE) {
-      return res.status(402).json({ error: "share_required", message: "Please send GhostAgent's 20% share before saving more signals." });
-    }
-
     const [signal] = await db.insert(trades).values({
       userId: user.id,
       symbol,
@@ -251,7 +217,7 @@ router.post("/save", requireUser(), async (req, res) => {
       stopLossPips: String(analysis.stopLossPips || 0),
       takeProfitPips: String(analysis.takeProfitPips || 0),
       riskRewardRatio: String(analysis.riskRewardRatio || "N/A"),
-      recommendedLotSize: String(analysis.recommendedLotSize || 0.01),
+      recommendedLotSize: String(analysis.recommendedQty || 1),
       riskPercent: String(analysis.riskPercent || 1),
       accountBalanceAtSignal: String(analysis.accountBalance || user.tradingBalance || 50),
       signalStatus: "active",
@@ -266,7 +232,13 @@ router.post("/save", requireUser(), async (req, res) => {
         confluenceFactors: analysis.confluenceFactors,
         session: analysis.session,
         invalidationLevel: analysis.invalidationLevel,
+        optionsContract: analysis.optionsContract || null,
       },
+      optionSymbol: analysis.optionsContract?.symbol || null,
+      optionType: analysis.optionsContract?.optionType || null,
+      optionStrike: analysis.optionsContract?.strike ? String(analysis.optionsContract.strike) : null,
+      optionExpiration: analysis.optionsContract?.expiration ? new Date(analysis.optionsContract.expiration) : null,
+      optionPremium: analysis.optionsContract?.premium ? String(analysis.optionsContract.premium) : null,
       confluenceScore: analysis.confluenceScore || 0,
       session: analysis.session,
     }).returning();
@@ -313,13 +285,10 @@ router.get("/status", requireUser(), async (req, res) => {
       tpSignalsSinceLastShare: user.tpSignalsSinceLastShare || 0,
       tpUntilShare,
       shareRequired,
-      hasMinBalance: Number(user.balance) >= MIN_BALANCE_USD,
-      canGetSignal: !shareRequired && Number(user.balance) >= MIN_BALANCE_USD,
-      ghostSharePercent: 20,
-      userSharePercent: 80,
-      hasMt5: !!user.mt5AccountId,
-      mt5Login: user.mt5Login,
-      mt5Server: user.mt5Server,
+      hasMinBalance: true,
+      canGetSignal: isAlpacaConfigured(),
+      alpacaConfigured: isAlpacaConfigured(),
+      broker: "Alpaca paper trading",
     });
   } catch (err) {
     req.log.error({ err }, "Signal status failed");
