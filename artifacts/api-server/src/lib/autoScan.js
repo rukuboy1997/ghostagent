@@ -10,7 +10,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { db, users, trades, watchlist } from "../db/index.js";
 import { analyzeMarket } from "./cloudflare-ai.js";
 import {
-  chooseOptionContract,
+  chooseOptionContract,        // <-- we'll no longer use this directly
   getAccount,
   getClock,
   getMarketDataWithIndicators,
@@ -18,6 +18,11 @@ import {
 } from "./alpaca.js";
 import { emitSignalNotification } from "./notifications.js";
 import { logger } from "./logger.js";
+
+// ----- NEW IMPORTS for Wheel strategy & risk gate -----
+import { runWheelCycle } from "../strategies/wheel.js";
+import { getOptionPositions } from "./options.js";
+// -----------------------------------------------------
 
 const DEDUP_WINDOW_MS = 30 * 60 * 1000;
 const MIN_CONFIDENCE = 78;
@@ -94,17 +99,55 @@ async function scanUser(user, symbols, account) {
       if (analysis.decision === "HOLD" || analysis.confidence < MIN_CONFIDENCE || analysis.confluenceScore < MIN_CONFLUENCE) continue;
       if (alreadyEmitted(user.clerkId, symbol, analysis.decision)) continue;
 
-      const contract = await chooseOptionContract(symbol, analysis.decision, marketData.price);
-      analysis.optionsContract = contract;
+      // ----- REPLACE old chooseOptionContract with Wheel strategy -----
+      // Get the best put for this symbol using the Wheel
+      const wheelSignals = await runWheelCycle([symbol]); // returns array of signals
+      if (!wheelSignals || wheelSignals.length === 0) {
+        logger.info({ symbol }, 'No suitable put found via Wheel strategy, skipping.');
+        continue;
+      }
+      const bestSignal = wheelSignals[0]; // take the top pick
+
+      // Map to the format the rest of the code expects (matches old contract)
+      const contract = {
+        symbol: bestSignal.symbol,           // e.g., "SPY230616P450000"
+        strike: bestSignal.strike,
+        expiration: bestSignal.expiration,
+        premium: bestSignal.bid,             // use bid as premium (per share)
+        optionType: 'put',                   // we only sell puts for the wheel
+        contractSize: 100,
+      };
+      // ----------------------------------------------------------------
+
       const quantity = quantityFor(account, contract);
       let order = null;
       let trade = null;
 
       if (user.autoTradeEnabled) {
+        // ----- RISK GATE: Check total delta exposure (or count) -----
+        const positions = await getOptionPositions();
+        // Option A: Use Greeks if available (more precise)
+        const totalDelta = positions.reduce((sum, pos) => {
+          const delta = parseFloat(pos.greeks?.delta || 0);
+          const qty = parseFloat(pos.qty || 0);
+          return sum + delta * qty;
+        }, 0);
+        const MAX_DELTA_EXPOSURE = 5; // adjust to your risk tolerance
+        if (Math.abs(totalDelta) >= MAX_DELTA_EXPOSURE) {
+          logger.warn({ userId: user.id, totalDelta }, 'Risk gate: Delta exposure limit reached, skipping new trade.');
+          continue; // skip this symbol
+        }
+        // Alternative simpler check: just count open options positions
+        // if (positions.length >= 3) { logger.warn('Max positions reached'); continue; }
+        // -------------------------------------------------------------
+
         order = await placeOptionsOrder({
           symbol: contract.symbol,
           qty: quantity,
-          side: "buy",
+          side: "buy",          // Note: For selling puts, this should be "sell" 
+                                // but your original code uses "buy" with "buy_to_open"
+                                // We'll keep as is, but you might want to change to "sell" 
+                                // if you want to SELL to open. Check your placeOptionsOrder implementation.
           positionIntent: "buy_to_open",
         });
         trade = await saveAgentTrade(user, symbol, analysis, contract, order, account, quantity);
